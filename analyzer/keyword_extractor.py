@@ -106,27 +106,3 @@ def analyze_keywords(posts: list[dict]) -> list[KeywordResult]:
 
     logger.info(f"키워드 {len(results)}개 추출 완료")
     return results
-
-
-def format_keywords_for_ai(keywords: list[KeywordResult], posts: list[dict]) -> str:
-    """Claude API에 넘길 텍스트 포맷 생성"""
-    lines: list[str] = []
-    lines.append(f"=== 커뮤니티 트렌드 데이터 ({len(posts)}개 게시글 분석) ===\n")
-
-    lines.append("## TOP 키워드 (빈도순)")
-    for i, kw in enumerate(keywords, 1):
-        lines.append(f"{i}. {kw.keyword} ({kw.count}회)")
-        for title in kw.related_titles[:3]:
-            lines.append(f"   - {title}")
-        lines.append("")
-
-    lines.append("\n## 인기 게시글 TOP 10 (추천순)")
-    sorted_posts = sorted(posts, key=lambda x: x.get("recommend_count", 0), reverse=True)
-    for i, post in enumerate(sorted_posts[:10], 1):
-        lines.append(
-            f"{i}. [{post.get('gallery_name', '')}] {post.get('title', '')} "
-            f"(추천:{post.get('recommend_count', 0)} 조회:{post.get('view_count', 0)} "
-            f"댓글:{post.get('comment_count', 0)})"
-        )
-
-    return "\n".join(lines)
