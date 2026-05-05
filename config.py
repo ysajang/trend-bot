@@ -11,36 +11,50 @@ BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
+# ──────────────────────────────────────────────
 # Telegram
+# ──────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# ──────────────────────────────────────────────
 # Anthropic
+# ──────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-
-# 크롤링 설정
-CRAWL_DELAY_SEC = float(os.getenv("CRAWL_DELAY_SEC", "2"))
-MAX_POSTS_PER_GALLERY = int(os.getenv("MAX_POSTS_PER_GALLERY", "50"))
-
-# 디시인사이드 대상 갤러리
-DC_GALLERIES = [
-    {"id": "dcbest", "name": "디시 실시간베스트", "is_minor": False, "is_best": True},
-]
-
-# 에펨코리아 (2단계)
-FM_ENABLED = False
 
 # Claude 모델
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 SONNET_MODEL = "claude-sonnet-4-20250514"
 
+# ──────────────────────────────────────────────
+# Naver Open API (단계 C/D에서 사용)
+# https://developers.naver.com/apps/#/register
+# ──────────────────────────────────────────────
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
+
+# Naver API rate limits (검증된 값 / 2025년 기준 공식 문서)
+# 출처: https://developers.naver.com/docs/serviceapi/search/news/news.md
+NAVER_DAILY_QUOTA = 25000           # 일일 검색 API 호출 한도
+NAVER_QPS_LIMIT = 9                 # 초당 호출 한도 (10 마진 고려 9 적용)
+NAVER_NEWS_PER_QUERY = 10           # 키워드당 뉴스 검색 결과 수
+
+# ──────────────────────────────────────────────
+# Layer 1 RSS 수집 설정 (단계 B에서 사용)
+# ──────────────────────────────────────────────
+RSS_FETCH_TIMEOUT_SEC = 10          # RSS 피드 개별 타임아웃
+RSS_RECENT_HOURS = 24               # 최근 N시간 기사만 필터링
+
+# ──────────────────────────────────────────────
 # 키워드 추출 설정
+# ──────────────────────────────────────────────
 MIN_KEYWORD_LENGTH = 2
 TOP_KEYWORD_COUNT = 20
 
 # ──────────────────────────────────────────────
 # 불용어 사전
 # 업데이트: 2026-04-29 (5일 실데이터 기반 확장 + A.2 잔여 노이즈 제거)
+# v2 피봇 시점에 디시 갤러리 약칭 등 일부는 제거 예정 (단계 E)
 # ──────────────────────────────────────────────
 STOPWORDS = {
     # ── 자음/모음 단독 + 초성체 ──
@@ -98,7 +112,7 @@ STOPWORDS = {
     # ── 자국명 (자국 언급은 시그널 아님) ──
     "한국",
 
-    # ── 갤러리 약칭 ──
+    # ── 갤러리 약칭 (v2 피봇 후 단계 E에서 정리 예정) ──
     "싱갤", "유갤", "기갤", "야갤", "중갤", "디갤", "코갤", "나갤",
     "판갤", "새갤", "테갤", "주갤", "상갤", "특갤", "해갤", "인갤",
     "프갤", "카갤", "스갤", "정갤", "음갤", "여갤", "남갤", "국갤",
@@ -112,7 +126,7 @@ STOPWORDS = {
     "jpg", "jpeg", "png", "gif", "webp", "mp4", "jpgif", "pic", "txt",
     "JPG", "JPEG", "PNG", "GIF", "WEBP",
 
-    # ── 디시 특유 표현 ──
+    # ── 디시 특유 표현 (v2 피봇 후 단계 E에서 정리 예정) ──
     "스압", "후방", "펌", "단독", "속보",
     "갤러리", "마이너", "실시간", "베스트",
     "디시", "인사이드", "디시인사이드",
