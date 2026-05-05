@@ -6,8 +6,8 @@ v2 아키텍처 (3-Layer):
   Layer 2: Naver News API (트렌드 심화)
   Layer 3: Naver DataLab API (트렌드 검증)
 
-현재 빌드 단계: B (Layer 1 RSS 수집기 배선 완료)
-  - Layer 2/3: 단계 C/D에서 구현
+현재 빌드 단계: C (Layer 1 + 2 배선 완료)
+  - Layer 3: 단계 D에서 구현
   - analyzer/notifier 재배선: 단계 E/F에서 구현
 """
 
@@ -18,6 +18,8 @@ from datetime import datetime, timezone, timedelta
 
 from collector import TrendItem
 from collector.rss_collector import fetch_all_feeds
+from collector.naver_news import search_by_keywords
+from analyzer.keyword_extractor import analyze_keywords
 
 KST = timezone(timedelta(hours=9))
 
@@ -34,12 +36,6 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("main")
-
-
-async def collect_layer2_naver_news(seed_keywords: list[str]) -> list[TrendItem]:
-    """Layer 2 Naver News API - 단계 C에서 구현"""
-    logger.info("[Layer 2] Naver News 수집기 미구현 (단계 C 대기)")
-    return []
 
 
 async def collect_layer3_datalab(keywords: list[str]) -> list[TrendItem]:
@@ -59,25 +55,45 @@ async def run() -> int:
     logger.info("TrendRadar Bot v2 실행 시작")
     logger.info("=" * 50)
 
-    # Layer 1: 트렌드 발견 (RSS)
+    # ── Layer 1: 트렌드 발견 (RSS) ──
     layer1_items = await fetch_all_feeds()
 
-    # Layer 2/3는 단계 C/D에서 배선
-    # layer2_items = await collect_layer2_naver_news([...])
-    # layer3_items = await collect_layer3_datalab([...])
-
     if not layer1_items:
-        logger.warning("수집된 TrendItem이 없습니다 (RSS 피드 전체 실패 가능성)")
+        logger.warning("Layer 1 수집 실패 (RSS 피드 전체 실패 가능성)")
         return 1
 
-    logger.info(f"수집 완료: Layer 1 {len(layer1_items)}건")
+    logger.info(f"Layer 1 완료: {len(layer1_items)}건")
 
-    # 카테고리별 통계
+    # ── 키워드 추출 (Layer 1 → Layer 2 브릿지) ──
+    layer1_dicts = [item.to_dict() for item in layer1_items]
+    keyword_results = analyze_keywords(layer1_dicts)
+    seed_keywords = [kw.keyword for kw in keyword_results]
+    logger.info(f"키워드 추출: TOP {len(seed_keywords)}개 → {seed_keywords[:10]}")
+
+    # ── Layer 2: 트렌드 심화 (Naver News) ──
+    layer2_items: list[TrendItem] = []
+    if seed_keywords:
+        layer2_items = await search_by_keywords(
+            keywords=seed_keywords[:10],  # TOP 10 키워드만 검색 (API 절약)
+            include_categories=True,
+        )
+        logger.info(f"Layer 2 완료: {len(layer2_items)}건")
+    else:
+        logger.warning("추출된 키워드 없음 → Layer 2 건너뜀")
+
+    # ── Layer 3: 단계 D에서 배선 ──
+    # layer3_items = await collect_layer3_datalab(seed_keywords)
+
+    # ── 통합 통계 ──
+    total = len(layer1_items) + len(layer2_items)
+    logger.info(f"전체 수집 완료: Layer 1 {len(layer1_items)}건 + Layer 2 {len(layer2_items)}건 = {total}건")
+
+    # 카테고리별 통계 (Layer 1만 / Layer 2는 카테고리 없음)
     cat_counts: dict[str, int] = {}
     for item in layer1_items:
         cat_counts[item.category] = cat_counts.get(item.category, 0) + 1
     for cat, cnt in sorted(cat_counts.items()):
-        logger.info(f"  [{cat}] {cnt}건")
+        logger.info(f"  [RSS:{cat}] {cnt}건")
 
     # analyzer / notifier 재배선은 단계 E/F에서 구현
     logger.info("analyzer / notifier 재배선 단계 E/F 대기 중")
