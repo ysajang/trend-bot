@@ -6,9 +6,9 @@ v2 아키텍처 (3-Layer):
   Layer 2: Naver News API (트렌드 심화)
   Layer 3: Naver DataLab API (트렌드 검증)
 
-⚠️ 현재 빌드 단계: A (TrendItem 베이스 + 레거시 크롤러 제거)
-  - 수집기는 단계 B~D에서 구현
-  - 단계 A 시점에서는 stub 상태로 즉시 종료 (import error 없음)
+현재 빌드 단계: B (Layer 1 RSS 수집기 배선 완료)
+  - Layer 2/3: 단계 C/D에서 구현
+  - analyzer/notifier 재배선: 단계 E/F에서 구현
 """
 
 import asyncio
@@ -16,7 +16,8 @@ import logging
 import sys
 from datetime import datetime, timezone, timedelta
 
-from collector import TrendItem  # noqa: F401  (단계 B 수집기에서 사용)
+from collector import TrendItem
+from collector.rss_collector import fetch_all_feeds
 
 KST = timezone(timedelta(hours=9))
 
@@ -35,12 +36,6 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-async def collect_layer1_rss() -> list[TrendItem]:
-    """Layer 1 RSS 수집 - 단계 B에서 구현"""
-    logger.info("[Layer 1] RSS 수집기 미구현 (단계 B 대기)")
-    return []
-
-
 async def collect_layer2_naver_news(seed_keywords: list[str]) -> list[TrendItem]:
     """Layer 2 Naver News API - 단계 C에서 구현"""
     logger.info("[Layer 2] Naver News 수집기 미구현 (단계 C 대기)")
@@ -55,7 +50,7 @@ async def collect_layer3_datalab(keywords: list[str]) -> list[TrendItem]:
 
 async def run() -> int:
     """
-    메인 파이프라인 (단계 A 시점은 stub)
+    메인 파이프라인
 
     Returns:
         종료 코드 (0=정상 / 1=수집 실패 / 2=처리 실패)
@@ -64,23 +59,27 @@ async def run() -> int:
     logger.info("TrendRadar Bot v2 실행 시작")
     logger.info("=" * 50)
 
-    # Layer 1: 트렌드 발견
-    layer1_items = await collect_layer1_rss()
+    # Layer 1: 트렌드 발견 (RSS)
+    layer1_items = await fetch_all_feeds()
 
     # Layer 2/3는 단계 C/D에서 배선
     # layer2_items = await collect_layer2_naver_news([...])
     # layer3_items = await collect_layer3_datalab([...])
 
     if not layer1_items:
-        logger.warning(
-            "수집된 TrendItem이 없습니다 - 수집기 미구현 상태일 수 있습니다 "
-            "(단계 A 빌드 중에는 정상)"
-        )
-        logger.info("TrendRadar v2 빌드 진행 중 - 다음 단계: Layer 1 RSS 수집기 구현")
-        return 0
+        logger.warning("수집된 TrendItem이 없습니다 (RSS 피드 전체 실패 가능성)")
+        return 1
 
-    # 분석 / AI / 텔레그램 단계는 단계 E~F에서 재배선
     logger.info(f"수집 완료: Layer 1 {len(layer1_items)}건")
+
+    # 카테고리별 통계
+    cat_counts: dict[str, int] = {}
+    for item in layer1_items:
+        cat_counts[item.category] = cat_counts.get(item.category, 0) + 1
+    for cat, cnt in sorted(cat_counts.items()):
+        logger.info(f"  [{cat}] {cnt}건")
+
+    # analyzer / notifier 재배선은 단계 E/F에서 구현
     logger.info("analyzer / notifier 재배선 단계 E/F 대기 중")
     return 0
 
