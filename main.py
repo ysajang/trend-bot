@@ -6,8 +6,7 @@ v2 아키텍처 (3-Layer):
   Layer 2: Naver News API (트렌드 심화)
   Layer 3: Naver DataLab API (트렌드 검증)
 
-현재 빌드 단계: C (Layer 1 + 2 배선 완료)
-  - Layer 3: 단계 D에서 구현
+현재 빌드 단계: D (Layer 1 + 2 + 3 배선 완료)
   - analyzer/notifier 재배선: 단계 E/F에서 구현
 """
 
@@ -19,6 +18,7 @@ from datetime import datetime, timezone, timedelta
 from collector import TrendItem
 from collector.rss_collector import fetch_all_feeds
 from collector.naver_news import search_by_keywords
+from collector.naver_datalab import verify_trends
 from analyzer.keyword_extractor import analyze_keywords
 
 KST = timezone(timedelta(hours=9))
@@ -36,12 +36,6 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("main")
-
-
-async def collect_layer3_datalab(keywords: list[str]) -> list[TrendItem]:
-    """Layer 3 DataLab 검증 - 단계 D에서 구현"""
-    logger.info("[Layer 3] DataLab 검증기 미구현 (단계 D 대기)")
-    return []
 
 
 async def run() -> int:
@@ -64,7 +58,7 @@ async def run() -> int:
 
     logger.info(f"Layer 1 완료: {len(layer1_items)}건")
 
-    # ── 키워드 추출 (Layer 1 → Layer 2 브릿지) ──
+    # ── 키워드 추출 (Layer 1 → Layer 2/3 브릿지) ──
     layer1_dicts = [item.to_dict() for item in layer1_items]
     keyword_results = analyze_keywords(layer1_dicts)
     seed_keywords = [kw.keyword for kw in keyword_results]
@@ -74,21 +68,31 @@ async def run() -> int:
     layer2_items: list[TrendItem] = []
     if seed_keywords:
         layer2_items = await search_by_keywords(
-            keywords=seed_keywords[:10],  # TOP 10 키워드만 검색 (API 절약)
+            keywords=seed_keywords[:10],
             include_categories=True,
         )
         logger.info(f"Layer 2 완료: {len(layer2_items)}건")
     else:
         logger.warning("추출된 키워드 없음 → Layer 2 건너뜀")
 
-    # ── Layer 3: 단계 D에서 배선 ──
-    # layer3_items = await collect_layer3_datalab(seed_keywords)
+    # ── Layer 3: 트렌드 검증 (DataLab) ──
+    layer3_items: list[TrendItem] = []
+    if seed_keywords:
+        layer3_items = await verify_trends(
+            keywords=seed_keywords[:20],  # TOP 20 키워드 검증 (4 API calls)
+        )
+        logger.info(f"Layer 3 완료: {len(layer3_items)}건")
+    else:
+        logger.warning("추출된 키워드 없음 → Layer 3 건너뜀")
 
     # ── 통합 통계 ──
-    total = len(layer1_items) + len(layer2_items)
-    logger.info(f"전체 수집 완료: Layer 1 {len(layer1_items)}건 + Layer 2 {len(layer2_items)}건 = {total}건")
+    logger.info(
+        f"전체 수집 완료: "
+        f"L1 {len(layer1_items)}건 + L2 {len(layer2_items)}건 + L3 {len(layer3_items)}건 = "
+        f"{len(layer1_items) + len(layer2_items) + len(layer3_items)}건"
+    )
 
-    # 카테고리별 통계 (Layer 1만 / Layer 2는 카테고리 없음)
+    # 카테고리별 통계
     cat_counts: dict[str, int] = {}
     for item in layer1_items:
         cat_counts[item.category] = cat_counts.get(item.category, 0) + 1
