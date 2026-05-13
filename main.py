@@ -41,6 +41,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
+# httpx 로그 억제 (텔레그램 API 호출 시 봇 토큰 평문 노출 방지)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 async def run() -> int:
     """

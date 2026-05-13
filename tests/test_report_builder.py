@@ -415,3 +415,82 @@ class TestTopKeywordSerialization:
         assert d["trend_tag"] == "급상승"
         assert d["news_title"] == "삼성 뉴스"
         assert d["news_url"] == "http://example.com"
+
+
+# ── 뉴스 클러스터 중복 배제 테스트 ──
+
+class TestNewsDeduplification:
+    def test_same_news_not_assigned_twice(self):
+        """같은 뉴스 기사가 여러 키워드에 중복 배정되지 않아야 함"""
+        l1 = []
+        l2 = [
+            _make_l2_item(
+                "이란 트럼프 합의 관련 뉴스",
+                summary="이란과 트럼프가 합의에 도달했다는 보도",
+                url="http://same-news.com",
+                search_keyword="이란",
+            ),
+            _make_l2_item(
+                "트럼프 독자 발언",
+                summary="트럼프 대통령이 별도 발언을 했다",
+                url="http://trump-only.com",
+                search_keyword="트럼프",
+            ),
+        ]
+        l3 = []
+        keywords = [
+            _make_keyword_result("이란", 30),
+            _make_keyword_result("트럼프", 25),
+        ]
+
+        report = build_report(l1, l2, l3, keywords)
+
+        urls = [kw.representative_news_url for kw in report.top_keywords if kw.representative_news_url]
+        # URL 중복 없어야 함
+        assert len(urls) == len(set(urls))
+
+    def test_fallback_when_all_news_used(self):
+        """모든 뉴스가 사용된 경우 빈 값으로 처리"""
+        l2 = [
+            _make_l2_item("유일한 뉴스", summary="하나뿐", url="http://only.com", search_keyword="A"),
+        ]
+        keywords = [
+            _make_keyword_result("A", 10),
+            _make_keyword_result("B", 5),  # B에 매칭 뉴스 없음
+        ]
+
+        report = build_report([], l2, [], keywords)
+        assert report.top_keywords[0].representative_news_url == "http://only.com"
+        assert report.top_keywords[1].representative_news_url == ""
+
+
+# ── 7일 추이 TOP 10 한정 테스트 ──
+
+class TestTrendHighlightsTopOnly:
+    def test_only_top10_keywords_in_highlights(self):
+        """7일 추이에 TOP 10 키워드만 포함되어야 함"""
+        # TOP 10에 포함될 키워드 2개
+        keywords = [
+            _make_keyword_result("삼성전자", 20),
+            _make_keyword_result("AI", 15),
+        ]
+        # DataLab에 TOP 10 밖 키워드도 포함
+        l3 = [
+            _make_l3_item("삼성전자", "급상승"),
+            _make_l3_item("AI", "지속상승"),
+            _make_l3_item("선박", "급상승"),    # TOP 10 밖
+            _make_l3_item("문제", "유지"),       # TOP 10 밖
+        ]
+
+        report = build_report([], [], l3, keywords)
+
+        # 7일 추이에 포함된 모든 키워드 수집
+        all_highlight_kws = []
+        for kws in report.trend_highlights.values():
+            all_highlight_kws.extend(kws)
+
+        assert "삼성전자" in all_highlight_kws
+        assert "AI" in all_highlight_kws
+        assert "선박" not in all_highlight_kws
+        assert "문제" not in all_highlight_kws
+

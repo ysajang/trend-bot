@@ -90,6 +90,7 @@ def _map_datalab_tags(
 def _find_best_news(
     keyword: str,
     layer2_items: list[TrendItem],
+    used_urls: set[str] | None = None,
 ) -> TrendItem | None:
     """
     키워드에 매칭되는 L2 뉴스 중 대표 1건 선정
@@ -97,12 +98,19 @@ def _find_best_news(
     선정 기준:
       1차: summary 길이 (정보량)
       2차: published_at 최신순 (동률 시)
+
+    Args:
+        used_urls: 이미 선정된 뉴스 URL (중복 배제용)
     """
     candidates: list[TrendItem] = []
     kw_lower = keyword.lower()
+    exclude = used_urls or set()
 
     for item in layer2_items:
         if item.source_type != "naver_news":
+            continue
+        # 이미 다른 키워드에 배정된 뉴스 제외
+        if item.url in exclude:
             continue
         # 키워드가 제목 또는 summary에 포함
         if kw_lower in item.title.lower() or kw_lower in item.summary.lower():
@@ -199,10 +207,13 @@ def build_report(
     # 1. DataLab 태그 매핑
     tag_map = _map_datalab_tags(layer3_items)
 
-    # 2. TOP 10 키워드 + 태그 + 대표뉴스
+    # 2. TOP 10 키워드 + 태그 + 대표뉴스 (중복 배제)
     top_keywords: list[TopKeyword] = []
+    used_news_urls: set[str] = set()
     for kw_result in keyword_results[:10]:
-        best_news = _find_best_news(kw_result.keyword, layer2_items)
+        best_news = _find_best_news(kw_result.keyword, layer2_items, used_news_urls)
+        if best_news and best_news.url:
+            used_news_urls.add(best_news.url)
         top_keywords.append(TopKeyword(
             keyword=kw_result.keyword,
             count=kw_result.count,
@@ -214,8 +225,10 @@ def build_report(
     # 3. 카테고리별 분포
     category_dist = _compute_category_distribution(layer1_items)
 
-    # 4. 트렌드 하이라이트
-    trend_highlights = _compute_trend_highlights(tag_map)
+    # 4. 트렌드 하이라이트 (TOP 10 키워드만 포함)
+    top_kw_set = {kw.keyword for kw in top_keywords}
+    filtered_tag_map = {k: v for k, v in tag_map.items() if k in top_kw_set}
+    trend_highlights = _compute_trend_highlights(filtered_tag_map)
 
     # 5. 어제 대비 변화
     yesterday_diff = None
