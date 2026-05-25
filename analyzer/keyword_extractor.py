@@ -18,6 +18,18 @@ logger = logging.getLogger(__name__)
 
 kiwi = Kiwi()
 
+# ── 약칭 → 정식명 매핑 (동일 대상 통합) ──
+ALIAS_MAP: dict[str, str] = {
+    "스벅": "스타벅스",
+    "삼전": "삼성전자",
+    "현차": "현대차",
+    "기아차": "기아",
+    "국힘": "국민의힘",
+    "민주": "더불어민주당",
+    "조국당": "조국혁신당",
+    "한동훈": "한동훈",
+}
+
 # ── 동음이의어 사전 (P1: 문맥 기반 분기) ──
 # 키: 동음이의어 / 값: {의미: 동반출현 키워드 세트}
 # 동반 키워드가 같은 제목에 존재하면 해당 의미로 분류
@@ -104,21 +116,53 @@ def clean_title(title: str) -> str:
 
 
 def extract_nouns(text: str) -> list[str]:
-    """텍스트에서 명사 추출"""
-    nouns: list[str] = []
+    """
+    텍스트에서 명사 추출
+
+    개선사항:
+      - 인접 NNP 토큰 병합 ("장동" + "혁" → "장동혁")
+      - 약칭 → 정식명 통합 ("스벅" → "스타벅스")
+    """
     tokens = kiwi.tokenize(text)
-    for token in tokens:
-        # NNG: 일반명사, NNP: 고유명사, SL: 외국어
-        if token.tag in ("NNG", "NNP", "SL"):
-            word = token.form.strip()
-            word_lower = word.lower()
-            if (
-                len(word) >= config.MIN_KEYWORD_LENGTH
-                and word not in config.STOPWORDS
-                and word_lower not in {s.lower() for s in config.STOPWORDS}
-                and not word.isdigit()
-            ):
-                nouns.append(word)
+
+    # 1단계: 인접 NNP 토큰 병합
+    merged_tokens: list[tuple[str, str]] = []  # (form, tag)
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.tag == "NNP":
+            # 연속 NNP 탐색 (end == 다음 start)
+            combined = tok.form
+            end_pos = tok.end
+            j = i + 1
+            while j < len(tokens) and tokens[j].tag == "NNP" and tokens[j].start == end_pos:
+                combined += tokens[j].form
+                end_pos = tokens[j].end
+                j += 1
+            merged_tokens.append((combined, "NNP"))
+            i = j
+        else:
+            merged_tokens.append((tok.form, tok.tag))
+            i += 1
+
+    # 2단계: 명사 필터링 + 약칭 통합
+    stopwords_lower = {s.lower() for s in config.STOPWORDS}
+    nouns: list[str] = []
+    for form, tag in merged_tokens:
+        if tag not in ("NNG", "NNP", "SL"):
+            continue
+        word = form.strip()
+        if not word or len(word) < config.MIN_KEYWORD_LENGTH or word.isdigit():
+            continue
+
+        # 약칭 → 정식명 변환
+        word = ALIAS_MAP.get(word, word)
+
+        if word in config.STOPWORDS or word.lower() in stopwords_lower:
+            continue
+
+        nouns.append(word)
+
     return nouns
 
 
