@@ -22,7 +22,6 @@ from collector.naver_news import search_by_keywords
 from collector.naver_datalab import verify_trends
 from analyzer.keyword_extractor import analyze_keywords
 from analyzer.report_builder import build_report
-from analyzer.opportunity_signal import generate_opportunity_signals
 from storage.json_store import save_daily_data, load_yesterday_keywords, cleanup_old_data
 from notifier.telegram import format_report, send_report
 
@@ -120,19 +119,12 @@ async def run() -> int:
         yesterday_keywords=yesterday_keywords,
     )
 
-    # ── E: 사업 기회 시그널 생성 (Sonnet 1회) ──
-    opportunity_text = await generate_opportunity_signals(report)
-    if opportunity_text:
-        logger.info("사업 기회 시그널 생성 완료")
-    else:
-        logger.info("사업 기회 시그널 생략 (API 키 없음 또는 오류)")
-
     # ── 텔레그램 발송 ──
-    formatted = format_report(report, opportunity_signals=opportunity_text)
+    formatted = format_report(report)
     logger.info(f"리포트 생성 완료 ({len(formatted)}자)")
     logger.info(f"\n{formatted}")
 
-    sent = await send_report(report, opportunity_signals=opportunity_text)
+    sent = await send_report(report)
     if sent:
         logger.info("텔레그램 발송 완료")
     else:

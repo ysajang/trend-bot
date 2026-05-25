@@ -28,7 +28,7 @@ TAG_EMOJI = {
 }
 
 
-def format_report(report: ReportData, opportunity_signals: str = "") -> str:
+def format_report(report: ReportData) -> str:
     """
     ReportData → 텔레그램 메시지 포맷
 
@@ -100,14 +100,6 @@ def format_report(report: ReportData, opportunity_signals: str = "") -> str:
                 lines.append(f"📤 이탈: {' / '.join(diff.dropped_keywords)}")
             lines.append("")
 
-    # ── 섹션 5: 사업 기회 시그널 (Sonnet) ──
-    if opportunity_signals:
-        lines.append("━━━━━━━━━━━━━━━━━━━━")
-        lines.append("💡 사업 기회 시그널")
-        lines.append("━━━━━━━━━━━━━━━━━━━━")
-        lines.append(opportunity_signals)
-        lines.append("")
-
     # ── 푸터 ──
     lines.append("🤖 TrendRadar Bot v2")
 
@@ -136,7 +128,7 @@ def split_message(text: str) -> list[str]:
     return messages
 
 
-async def send_report(report: ReportData, opportunity_signals: str = "") -> bool:
+async def send_report(report: ReportData) -> bool:
     """
     텔레그램으로 리포트 전송
 
@@ -150,7 +142,7 @@ async def send_report(report: ReportData, opportunity_signals: str = "") -> bool
         logger.error("텔레그램 설정이 없습니다 (.env 확인)")
         return False
 
-    formatted = format_report(report, opportunity_signals=opportunity_signals)
+    formatted = format_report(report)
     bot = telegram.Bot(token=config.TELEGRAM_BOT_TOKEN)
     messages = split_message(formatted)
 
