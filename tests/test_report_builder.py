@@ -19,7 +19,10 @@ from analyzer.report_builder import (
     TrendChange,
     ReportData,
     _map_datalab_tags,
+    _map_datalab_ratios,
     _find_best_news,
+    _compute_relevance_score,
+    _compute_source_tag,
     _compute_category_distribution,
     _compute_trend_highlights,
     compute_yesterday_diff,
@@ -406,6 +409,7 @@ class TestTopKeywordSerialization:
             keyword="삼성전자",
             count=15,
             trend_tag="급상승",
+            source_tag="🔥 진짜트렌드",
             representative_news_title="삼성 뉴스",
             representative_news_url="http://example.com",
         )
@@ -413,8 +417,125 @@ class TestTopKeywordSerialization:
         assert d["keyword"] == "삼성전자"
         assert d["count"] == 15
         assert d["trend_tag"] == "급상승"
+        assert d["source_tag"] == "🔥 진짜트렌드"
         assert d["news_title"] == "삼성 뉴스"
         assert d["news_url"] == "http://example.com"
+
+
+# ── P0: relevance score 기반 매칭 테스트 ──
+
+class TestRelevanceScore:
+    def test_keyword_in_title_front_scores_higher(self):
+        """키워드가 제목 앞쪽에 있으면 점수가 높아야 함"""
+        front_item = _make_l2_item("트럼프 대북 정책 발표", summary="상세설명")
+        back_item = _make_l2_item("미국 대북 정책에서 트럼프 입장", summary="상세설명")
+
+        front_score = _compute_relevance_score("트럼프", front_item)
+        back_score = _compute_relevance_score("트럼프", back_item)
+        assert front_score > back_score
+
+    def test_no_match_returns_zero(self):
+        """키워드가 전혀 없으면 0점"""
+        item = _make_l2_item("전혀 다른 뉴스 제목", summary="관련없는 내용")
+        score = _compute_relevance_score("삼성전자", item)
+        assert score == 0.0
+
+    def test_search_keyword_match_bonus(self):
+        """search_keyword 직접 매치 시 보너스"""
+        item = _make_l2_item("반도체 투자 뉴스", summary="상세", search_keyword="삼성전자")
+        score = _compute_relevance_score("삼성전자", item)
+        assert score >= 15.0  # search_keyword 보너스
+
+    def test_co_occurrence_boosts_score(self):
+        """다른 TOP 키워드 동시 출현 시 점수 상승"""
+        item = _make_l2_item("이란 트럼프 협상 진행", summary="이란과 트럼프가 협상")
+        score_without = _compute_relevance_score("이란", item, all_top_keywords=[])
+        score_with = _compute_relevance_score("이란", item, all_top_keywords=["트럼프", "협상"])
+        assert score_with > score_without
+
+
+class TestContextualNewsMatching:
+    """P0: 동음이의어 뉴스 매칭 오류 방지 테스트"""
+
+    def test_구속_법률_vs_야구(self):
+        """'구속' 키워드에 법률 기사가 야구 기사보다 높은 점수여야 함"""
+        law_article = _make_l2_item(
+            "검찰 구속영장 청구 피의자 출석",
+            summary="검찰이 혐의자에 대해 구속영장을 청구했다",
+            url="http://law.com",
+            search_keyword="구속",
+        )
+        baseball_article = _make_l2_item(
+            "투수 구속 150km 돌파 경기 결과",
+            summary="선발 투수가 직구 구속 150km를 기록하며 삼진을 잡았다",
+            url="http://baseball.com",
+            search_keyword="구속",
+        )
+
+        # "구속"이 제목 앞쪽에 있는 기사에 더 높은 점수
+        # 법률 기사: "검찰 구속영장" → 구속이 4번째 글자 (앞쪽)
+        # 야구 기사: "투수 구속" → 구속이 3번째 글자 (비슷)
+        # → 맥락 차이는 co-occurrence로 분류
+        # all_top_keywords에 "검찰"이 있으면 법률 기사가 유리
+        law_score = _compute_relevance_score(
+            "구속", law_article, all_top_keywords=["검찰", "혐의"]
+        )
+        baseball_score = _compute_relevance_score(
+            "구속", baseball_article, all_top_keywords=["검찰", "혐의"]
+        )
+        assert law_score > baseball_score
+
+    def test_스타벅스_관련_기사_선정(self):
+        """'스타벅스' 키워드에 관련 기사가 무관한 기사보다 우선"""
+        relevant = _make_l2_item(
+            "스타벅스 신메뉴 출시 반응",
+            summary="스타벅스가 여름 신메뉴를 출시했다",
+            url="http://starbucks.com",
+            search_keyword="스타벅스",
+        )
+        irrelevant = _make_l2_item(
+            "카페 혐오 논란 속 스타벅스 언급",
+            summary="온라인 커뮤니티에서 카페 이용 매너 논란이 일었다",
+            url="http://hate.com",
+            search_keyword="스타벅스",
+        )
+
+        rel_score = _compute_relevance_score("스타벅스", relevant)
+        irr_score = _compute_relevance_score("스타벅스", irrelevant)
+        assert rel_score > irr_score
+
+
+# ── D: source_tag 크로스체크 테스트 ──
+
+class TestComputeSourceTag:
+    def test_real_trend(self):
+        tag = _compute_source_tag(keyword_count=20, median_count=10, change_ratio=2.0)
+        assert "진짜트렌드" in tag
+
+    def test_media_driven(self):
+        tag = _compute_source_tag(keyword_count=20, median_count=10, change_ratio=0.5)
+        assert "미디어주도" in tag
+
+    def test_public_interest(self):
+        tag = _compute_source_tag(keyword_count=5, median_count=10, change_ratio=2.0)
+        assert "대중관심" in tag
+
+    def test_no_tag(self):
+        tag = _compute_source_tag(keyword_count=5, median_count=10, change_ratio=1.0)
+        assert tag == ""
+
+
+class TestMapDatalabRatios:
+    def test_empty(self):
+        assert _map_datalab_ratios([]) == {}
+
+    def test_extracts_change_ratio(self):
+        item = TrendItem(
+            source="datalab", source_type="datalab", title="트렌드: 삼성전자",
+            keywords=["삼성전자"], raw_meta={"change_ratio": 2.5, "trend_tag": "급상승"},
+        )
+        result = _map_datalab_ratios([item])
+        assert result["삼성전자"] == 2.5
 
 
 # ── 뉴스 클러스터 중복 배제 테스트 ──

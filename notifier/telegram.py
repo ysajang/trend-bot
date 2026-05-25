@@ -53,7 +53,8 @@ def format_report(report: ReportData) -> str:
     lines.append("━━━━━━━━━━━━━━━━━━━━")
     for i, kw in enumerate(report.top_keywords, 1):
         emoji = TAG_EMOJI.get(kw.trend_tag, "·")
-        lines.append(f"{i}. {kw.keyword} ({kw.count}회) {emoji} {kw.trend_tag}")
+        source = f" {kw.source_tag}" if kw.source_tag else ""
+        lines.append(f"{i}. {kw.keyword} ({kw.count}회) {emoji} {kw.trend_tag}{source}")
     lines.append("")
 
     # ── 섹션 2: 주요 뉴스 클러스터 ──
