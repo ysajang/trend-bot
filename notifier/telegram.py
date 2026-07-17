@@ -100,6 +100,26 @@ def format_report(report: ReportData) -> str:
                 lines.append(f"📤 이탈: {' / '.join(diff.dropped_keywords)}")
             lines.append("")
 
+    # ── 섹션 5: 엔터/문화/게임 트렌드 ──
+    if report.entertainment_keywords:
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append("🎮 엔터/문화/게임 트렌드 TOP 5")
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        for i, kw in enumerate(report.entertainment_keywords, 1):
+            emoji = TAG_EMOJI.get(kw.trend_tag, "·")
+            source = f" {kw.source_tag}" if kw.source_tag else ""
+            lines.append(f"{i}. {kw.keyword} ({kw.count}회) {emoji} {kw.trend_tag}{source}")
+        # 엔터 대표 기사
+        ent_news = [kw for kw in report.entertainment_keywords if kw.representative_news_title]
+        if ent_news:
+            lines.append("")
+            for kw in ent_news:
+                title = kw.representative_news_title
+                if len(title) > 60:
+                    title = title[:57] + "..."
+                lines.append(f"▸ [{kw.keyword}] {title}")
+        lines.append("")
+
     # ── 푸터 ──
     lines.append("🤖 TrendRadar Bot v2")
 

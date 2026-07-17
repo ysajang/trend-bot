@@ -615,3 +615,64 @@ class TestTrendHighlightsTopOnly:
         assert "선박" not in all_highlight_kws
         assert "문제" not in all_highlight_kws
 
+
+# ── 엔터/문화/게임 분리 집계 + 섹션 테스트 ──
+
+from analyzer.keyword_extractor import analyze_keywords
+
+
+class TestCategoryFilteredKeywords:
+    """analyze_keywords의 category 필터"""
+
+    def _posts(self):
+        return [
+            {"title": "이란 호르무즈 해상 봉쇄", "category": "종합"},
+            {"title": "트럼프 관세 정책 발표", "category": "경제"},
+            {"title": "젤다 신작 닌텐도 스위치 출시", "category": "게임"},
+            {"title": "엘든링 확장팩 대박 흥행", "category": "게임"},
+            {"title": "봉준호 신작 영화 칸 초청", "category": "문화"},
+        ]
+
+    def test_exclude_entertainment(self):
+        """엔터 제외 시 게임/문화 키워드가 안 잡혀야 함"""
+        results = analyze_keywords(
+            self._posts(), exclude_categories={"게임", "문화", "연예"}
+        )
+        kws = {r.keyword for r in results}
+        assert "닌텐도" not in kws
+        assert "봉준호" not in kws
+
+    def test_include_only_entertainment(self):
+        """엔터만 포함 시 정치/경제 키워드가 안 잡혀야 함"""
+        results = analyze_keywords(
+            self._posts(), include_categories={"게임", "문화", "연예"}
+        )
+        kws = {r.keyword for r in results}
+        assert "이란" not in kws
+        assert "트럼프" not in kws
+        # 게임/문화 키워드는 포함
+        assert any(k in kws for k in ["닌텐도", "엘든링", "봉준호", "스위치"])
+
+
+class TestEntertainmentSection:
+    """리포트 엔터 섹션 생성"""
+
+    def test_entertainment_keywords_populated(self):
+        ent_results = [
+            KeywordResult(keyword="닌텐도", count=5, related_titles=[]),
+            KeywordResult(keyword="엘든링", count=3, related_titles=[]),
+        ]
+        l1 = [
+            _make_l1_item("닌텐도 스위치2 신작 발표", category="게임"),
+            _make_l1_item("엘든링 DLC 출시일 공개", category="게임"),
+        ]
+        report = build_report(
+            l1, [], [], [], entertainment_results=ent_results,
+        )
+        assert len(report.entertainment_keywords) == 2
+        assert report.entertainment_keywords[0].keyword == "닌텐도"
+
+    def test_no_entertainment_results(self):
+        """엔터 결과 없으면 빈 리스트"""
+        report = build_report([], [], [], [])
+        assert report.entertainment_keywords == []

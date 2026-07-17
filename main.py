@@ -16,8 +16,9 @@ import logging
 import sys
 from datetime import datetime, timezone, timedelta
 
+import config
 from collector import TrendItem
-from collector.rss_collector import fetch_all_feeds
+from collector.rss_collector import fetch_all_feeds, ENTERTAINMENT_CATEGORIES
 from collector.naver_news import search_by_keywords
 from collector.naver_datalab import verify_trends
 from analyzer.keyword_extractor import analyze_keywords
@@ -68,9 +69,21 @@ async def run() -> int:
 
     # ── 키워드 추출 (Layer 1 → Layer 2/3 브릿지) ──
     layer1_dicts = [item.to_dict() for item in layer1_items]
-    keyword_results = analyze_keywords(layer1_dicts)
+    # 종합 TOP: 엔터 카테고리 제외 (정치·경제·사회 집중)
+    keyword_results = analyze_keywords(
+        layer1_dicts, exclude_categories=ENTERTAINMENT_CATEGORIES,
+    )
     seed_keywords = [kw.keyword for kw in keyword_results]
     logger.info(f"키워드 추출: TOP {len(seed_keywords)}개 → {seed_keywords[:10]}")
+
+    # 엔터/문화/게임 TOP: 엔터 카테고리만 집계 (엔터 전용 불용어 적용)
+    ent_keyword_results = analyze_keywords(
+        layer1_dicts,
+        include_categories=ENTERTAINMENT_CATEGORIES,
+        extra_stopwords=config.ENTERTAINMENT_STOPWORDS,
+    )
+    ent_seed_keywords = [kw.keyword for kw in ent_keyword_results[:5]]
+    logger.info(f"엔터 키워드 추출: TOP {len(ent_seed_keywords)}개 → {ent_seed_keywords}")
 
     # ── Layer 2: 트렌드 심화 (Naver News) ──
     layer2_items: list[TrendItem] = []
@@ -85,10 +98,10 @@ async def run() -> int:
 
     # ── Layer 3: 트렌드 검증 (DataLab) ──
     layer3_items: list[TrendItem] = []
-    if seed_keywords:
-        layer3_items = await verify_trends(
-            keywords=seed_keywords[:20],  # TOP 20 키워드 검증 (4 API calls)
-        )
+    # 종합 TOP 20 + 엔터 TOP 5 를 함께 검증 (중복 제거)
+    verify_targets = list(dict.fromkeys(seed_keywords[:20] + ent_seed_keywords))
+    if verify_targets:
+        layer3_items = await verify_trends(keywords=verify_targets)
         logger.info(f"Layer 3 완료: {len(layer3_items)}건")
     else:
         logger.warning("추출된 키워드 없음 → Layer 3 건너뜀")
@@ -117,6 +130,7 @@ async def run() -> int:
         layer3_items=layer3_items,
         keyword_results=keyword_results,
         yesterday_keywords=yesterday_keywords,
+        entertainment_results=ent_keyword_results,
     )
 
     # ── 텔레그램 발송 ──

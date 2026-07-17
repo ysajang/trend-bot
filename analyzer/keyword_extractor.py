@@ -166,26 +166,43 @@ def extract_nouns(text: str) -> list[str]:
     return nouns
 
 
-def analyze_keywords(posts: list[dict]) -> list[KeywordResult]:
+def analyze_keywords(
+    posts: list[dict],
+    include_categories: set[str] | None = None,
+    exclude_categories: set[str] | None = None,
+    extra_stopwords: set[str] | None = None,
+) -> list[KeywordResult]:
     """
     게시글 리스트에서 TOP 키워드 추출
 
     Args:
         posts: Post.to_dict() 리스트
+        include_categories: 지정 시 해당 category 게시글만 집계 (예: {"게임","문화","연예"})
+        exclude_categories: 지정 시 해당 category 게시글 제외
+        extra_stopwords: 이 호출에서만 추가로 제외할 불용어 (전역 STOPWORDS 미변경)
 
     Returns:
         빈도순 KeywordResult 리스트
     """
     keyword_counter: Counter = Counter()
     keyword_titles: dict[str, list[str]] = {}
+    extra_stop = {s.lower() for s in (extra_stopwords or set())}
 
     for post in posts:
+        category = post.get("category", "")
+        if include_categories is not None and category not in include_categories:
+            continue
+        if exclude_categories is not None and category in exclude_categories:
+            continue
+
         title = post.get("title", "")
         cleaned = clean_title(title)
         nouns = extract_nouns(cleaned)
         noun_set = set(nouns)
 
         for noun in set(nouns):  # 한 제목 내 중복 제거
+            if noun.lower() in extra_stop:
+                continue
             # P1: 동음이의어 분기
             resolved = _resolve_homonym(noun, noun_set)
             if resolved is None:

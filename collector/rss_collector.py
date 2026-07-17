@@ -39,11 +39,12 @@ class RSSFeed:
     name: str           # 식별자 (예: "hani")
     label: str          # 표시명 (예: "한겨레")
     url: str            # RSS URL
-    category: str       # "종합" | "경제" | "IT" | "속보"
+    category: str       # "종합"|"경제"|"IT"|"속보"|"게임"|"문화"|"연예"
 
 
 # ──────────────────────────────────────────────
 # 확정 피드 목록 (2026-05-06 활성 검증 완료)
+# 엔터/문화/게임 소스 추가 (2026-07-17 활성 검증 완료)
 # ──────────────────────────────────────────────
 RSS_FEEDS: list[RSSFeed] = [
     # 종합
@@ -61,7 +62,19 @@ RSS_FEEDS: list[RSSFeed] = [
     RSSFeed("etnews",   "전자신문", "https://rss.etnews.com/Section901.xml",                             "IT"),
     # 속보
     RSSFeed("newsis",   "뉴시스",   "https://www.newsis.com/RSS/sokbo.xml",                              "속보"),
+    # 게임 (엔터 트렌드용)
+    RSSFeed("inven",    "인벤",     "http://webzine.inven.co.kr/news/rss.php",                          "게임"),
+    RSSFeed("ruliweb",  "루리웹",   "https://bbs.ruliweb.com/news/rss",                                 "게임"),
+    # 문화
+    RSSFeed("khan_cul", "경향문화", "https://www.khan.co.kr/rss/rssdata/culture_news.xml",              "문화"),
+    # 연예
+    RSSFeed("hk_ent",   "한경연예", "https://www.hankyung.com/feed/entertainment",                       "연예"),
+    # IT소비 (엔터/소비 트렌드용)
+    RSSFeed("hk_it",    "한경IT",   "https://www.hankyung.com/feed/it",                                 "IT"),
 ]
+
+# 엔터/문화 트렌드 섹션에 포함할 카테고리
+ENTERTAINMENT_CATEGORIES = {"게임", "문화", "연예"}
 
 
 def _clean_html(text: str) -> str:

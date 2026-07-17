@@ -307,7 +307,7 @@ class TestRSSFeedsConfig:
         for feed in RSS_FEEDS:
             assert feed.name, f"{feed.label} name 비어있음"
             assert feed.url.startswith("http"), f"{feed.label} URL 비정상: {feed.url}"
-            assert feed.category in ("종합", "경제", "IT", "속보"), (
+            assert feed.category in ("종합", "경제", "IT", "속보", "게임", "문화", "연예"), (
                 f"{feed.label} 카테고리 비정상: {feed.category}"
             )
 

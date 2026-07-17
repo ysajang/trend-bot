@@ -69,6 +69,9 @@ class ReportData:
     # 섹션 4: 어제 대비 변화
     yesterday_diff: TrendChange | None = None
 
+    # 섹션 5: 엔터/문화/게임 트렌드 TOP (엔터 카테고리 전용)
+    entertainment_keywords: list[TopKeyword] = field(default_factory=list)
+
 
 def _map_datalab_tags(
     layer3_items: list[TrendItem],
@@ -213,12 +216,13 @@ def _compute_relevance_score(
 
 def _find_best_news(
     keyword: str,
-    layer2_items: list[TrendItem],
+    candidate_items: list[TrendItem],
     used_urls: set[str] | None = None,
     all_top_keywords: list[str] | None = None,
+    allowed_source_types: tuple[str, ...] = ("naver_news",),
 ) -> TrendItem | None:
     """
-    키워드에 매칭되는 L2 뉴스 중 대표 1건 선정
+    키워드에 매칭되는 뉴스 중 대표 1건 선정
 
     선정 기준: relevance score (맥락 일치도) 최고점
     동점 시: published_at 최신순
@@ -226,12 +230,14 @@ def _find_best_news(
     Args:
         used_urls: 이미 선정된 뉴스 URL (중복 배제용)
         all_top_keywords: 전체 TOP 키워드 리스트 (동시 출현 보너스 계산용)
+        allowed_source_types: 대표뉴스로 허용할 source_type
+            (종합=naver_news / 엔터=rss)
     """
     exclude = used_urls or set()
     scored: list[tuple[float, TrendItem]] = []
 
-    for item in layer2_items:
-        if item.source_type != "naver_news":
+    for item in candidate_items:
+        if item.source_type not in allowed_source_types:
             continue
         if item.url in exclude:
             continue
@@ -303,12 +309,63 @@ def compute_yesterday_diff(
     )
 
 
+def _build_top_keywords(
+    keyword_results: list[KeywordResult],
+    candidate_items: list[TrendItem],
+    tag_map: dict[str, str],
+    ratio_map: dict[str, float],
+    limit: int,
+    used_news_urls: set[str],
+    allowed_source_types: tuple[str, ...] = ("naver_news",),
+) -> list[TopKeyword]:
+    """
+    KeywordResult 리스트 → TopKeyword 리스트 변환
+    (대표뉴스 매칭 + DataLab source_tag 계산 포함)
+    """
+    results: list[TopKeyword] = []
+    all_kw_names = [kw.keyword for kw in keyword_results[:limit]]
+
+    counts = [kw.count for kw in keyword_results[:limit]]
+    if counts:
+        sorted_counts = sorted(counts)
+        mid = len(sorted_counts) // 2
+        median_count = (
+            sorted_counts[mid]
+            if len(sorted_counts) % 2 == 1
+            else (sorted_counts[mid - 1] + sorted_counts[mid]) / 2.0
+        )
+    else:
+        median_count = 0.0
+
+    for kw_result in keyword_results[:limit]:
+        best_news = _find_best_news(
+            kw_result.keyword, candidate_items, used_news_urls, all_kw_names,
+            allowed_source_types=allowed_source_types,
+        )
+        if best_news and best_news.url:
+            used_news_urls.add(best_news.url)
+
+        change_ratio = ratio_map.get(kw_result.keyword, 0.0)
+        source_tag = _compute_source_tag(kw_result.count, median_count, change_ratio)
+
+        results.append(TopKeyword(
+            keyword=kw_result.keyword,
+            count=kw_result.count,
+            trend_tag=tag_map.get(kw_result.keyword, "—"),
+            source_tag=source_tag,
+            representative_news_title=best_news.title if best_news else "",
+            representative_news_url=best_news.url if best_news else "",
+        ))
+    return results
+
+
 def build_report(
     layer1_items: list[TrendItem],
     layer2_items: list[TrendItem],
     layer3_items: list[TrendItem],
     keyword_results: list[KeywordResult],
     yesterday_keywords: list[str] | None = None,
+    entertainment_results: list[KeywordResult] | None = None,
 ) -> ReportData:
     """
     규칙기반 리포트 생성 (메인 함수)
@@ -317,8 +374,9 @@ def build_report(
         layer1_items: RSS 수집 결과
         layer2_items: Naver News 수집 결과
         layer3_items: DataLab 검증 결과
-        keyword_results: 키워드 추출 결과 (빈도순)
+        keyword_results: 종합 키워드 추출 결과 (빈도순, 엔터 제외)
         yesterday_keywords: 어제 TOP 키워드 (없으면 diff 생략)
+        entertainment_results: 엔터/문화/게임 키워드 추출 결과 (빈도순)
 
     Returns:
         ReportData 구조체
@@ -329,43 +387,23 @@ def build_report(
     tag_map = _map_datalab_tags(layer3_items)
     ratio_map = _map_datalab_ratios(layer3_items)
 
-    # 2. TOP 10 키워드 + 태그 + 대표뉴스 (중복 배제)
-    top_keywords: list[TopKeyword] = []
+    # 2. 종합 TOP 10 키워드 (대표뉴스 중복 배제)
     used_news_urls: set[str] = set()
-    all_kw_names = [kw.keyword for kw in keyword_results[:10]]
+    top_keywords = _build_top_keywords(
+        keyword_results, layer2_items, tag_map, ratio_map, 10, used_news_urls,
+    )
 
-    # source_tag 계산을 위한 중위수 산출
-    top10_counts = [kw.count for kw in keyword_results[:10]]
-    if top10_counts:
-        sorted_counts = sorted(top10_counts)
-        mid = len(sorted_counts) // 2
-        median_count = (
-            sorted_counts[mid]
-            if len(sorted_counts) % 2 == 1
-            else (sorted_counts[mid - 1] + sorted_counts[mid]) / 2.0
+    # 2-1. 엔터/문화/게임 TOP 5 키워드 (대표뉴스는 RSS 엔터 기사에서)
+    entertainment_keywords: list[TopKeyword] = []
+    if entertainment_results:
+        ent_source_items = [
+            it for it in layer1_items
+            if it.category in ("게임", "문화", "연예")
+        ]
+        entertainment_keywords = _build_top_keywords(
+            entertainment_results, ent_source_items, tag_map, ratio_map, 5,
+            used_news_urls, allowed_source_types=("rss",),
         )
-    else:
-        median_count = 0.0
-
-    for kw_result in keyword_results[:10]:
-        best_news = _find_best_news(
-            kw_result.keyword, layer2_items, used_news_urls, all_kw_names,
-        )
-        if best_news and best_news.url:
-            used_news_urls.add(best_news.url)
-
-        # D: DataLab 크로스체크 source_tag
-        change_ratio = ratio_map.get(kw_result.keyword, 0.0)
-        source_tag = _compute_source_tag(kw_result.count, median_count, change_ratio)
-
-        top_keywords.append(TopKeyword(
-            keyword=kw_result.keyword,
-            count=kw_result.count,
-            trend_tag=tag_map.get(kw_result.keyword, "—"),
-            source_tag=source_tag,
-            representative_news_title=best_news.title if best_news else "",
-            representative_news_url=best_news.url if best_news else "",
-        ))
 
     # 3. 카테고리별 분포
     category_dist = _compute_category_distribution(layer1_items)
@@ -389,11 +427,13 @@ def build_report(
         category_distribution=category_dist,
         trend_highlights=trend_highlights,
         yesterday_diff=yesterday_diff,
+        entertainment_keywords=entertainment_keywords,
     )
 
     logger.info(
         f"리포트 생성 완료: "
         f"TOP {len(top_keywords)} 키워드 / "
+        f"엔터 {len(entertainment_keywords)} 키워드 / "
         f"카테고리 {len(category_dist)}종 / "
         f"트렌드 태그 {len(trend_highlights)}종"
     )
