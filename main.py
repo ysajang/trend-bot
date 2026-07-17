@@ -118,7 +118,10 @@ async def run() -> int:
     yesterday_keywords = load_yesterday_keywords()
 
     # ── 데이터 저장 (오늘) ──
-    save_daily_data(layer1_items, layer2_items, layer3_items, keyword_results)
+    save_daily_data(
+        layer1_items, layer2_items, layer3_items,
+        keyword_results + ent_keyword_results[:5],  # 종합 + 엔터 통합 저장 (diff용)
+    )
 
     # ── 오래된 데이터 정리 ──
     cleanup_old_data(keep_days=7)

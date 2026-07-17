@@ -71,36 +71,7 @@ def format_report(report: ReportData) -> str:
             lines.append(f"▸ [{kw.keyword}] {title}")
         lines.append("")
 
-    # ── 섹션 3: 7일 추이 요약 ──
-    if report.trend_highlights:
-        lines.append("━━━━━━━━━━━━━━━━━━━━")
-        lines.append("📈 7일 추이 요약")
-        lines.append("━━━━━━━━━━━━━━━━━━━━")
-
-        # 우선순위 순서로 표시
-        tag_order = ["급상승", "신규", "지속상승", "하락세", "유지"]
-        for tag in tag_order:
-            keywords = report.trend_highlights.get(tag, [])
-            if keywords:
-                emoji = TAG_EMOJI.get(tag, "·")
-                kw_str = " / ".join(keywords[:8])  # 최대 8개
-                lines.append(f"{emoji} {tag}: {kw_str}")
-        lines.append("")
-
-    # ── 섹션 4: 어제 대비 변화 ──
-    if report.yesterday_diff is not None:
-        diff = report.yesterday_diff
-        if diff.new_keywords or diff.dropped_keywords:
-            lines.append("━━━━━━━━━━━━━━━━━━━━")
-            lines.append("🆚 어제 대비 변화")
-            lines.append("━━━━━━━━━━━━━━━━━━━━")
-            if diff.new_keywords:
-                lines.append(f"🆕 신규: {' / '.join(diff.new_keywords)}")
-            if diff.dropped_keywords:
-                lines.append(f"📤 이탈: {' / '.join(diff.dropped_keywords)}")
-            lines.append("")
-
-    # ── 섹션 5: 엔터/문화/게임 트렌드 ──
+    # ── 섹션 3: 엔터/문화/게임 트렌드 ──
     if report.entertainment_keywords:
         lines.append("━━━━━━━━━━━━━━━━━━━━")
         lines.append("🎮 엔터/문화/게임 트렌드 TOP 5")
@@ -119,6 +90,35 @@ def format_report(report: ReportData) -> str:
                     title = title[:57] + "..."
                 lines.append(f"▸ [{kw.keyword}] {title}")
         lines.append("")
+
+    # ── 섹션 4: 7일 추이 요약 (종합 + 엔터 통합) ──
+    if report.trend_highlights:
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append("📈 7일 추이 요약")
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+
+        # 우선순위 순서로 표시
+        tag_order = ["급상승", "신규", "지속상승", "하락세", "유지"]
+        for tag in tag_order:
+            keywords = report.trend_highlights.get(tag, [])
+            if keywords:
+                emoji = TAG_EMOJI.get(tag, "·")
+                kw_str = " / ".join(keywords[:8])  # 최대 8개
+                lines.append(f"{emoji} {tag}: {kw_str}")
+        lines.append("")
+
+    # ── 섹션 5: 어제 대비 변화 (종합 + 엔터 통합) ──
+    if report.yesterday_diff is not None:
+        diff = report.yesterday_diff
+        if diff.new_keywords or diff.dropped_keywords:
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            lines.append("🆚 어제 대비 변화")
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            if diff.new_keywords:
+                lines.append(f"🆕 신규: {' / '.join(diff.new_keywords)}")
+            if diff.dropped_keywords:
+                lines.append(f"📤 이탈: {' / '.join(diff.dropped_keywords)}")
+            lines.append("")
 
     # ── 푸터 ──
     lines.append("🤖 TrendRadar Bot v2")

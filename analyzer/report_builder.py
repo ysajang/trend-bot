@@ -408,15 +408,18 @@ def build_report(
     # 3. 카테고리별 분포
     category_dist = _compute_category_distribution(layer1_items)
 
-    # 4. 트렌드 하이라이트 (TOP 10 키워드만 포함)
+    # 4. 트렌드 하이라이트 (종합 TOP 10 + 엔터 TOP 5 통합)
     top_kw_set = {kw.keyword for kw in top_keywords}
+    top_kw_set |= {kw.keyword for kw in entertainment_keywords}
     filtered_tag_map = {k: v for k, v in tag_map.items() if k in top_kw_set}
     trend_highlights = _compute_trend_highlights(filtered_tag_map)
 
-    # 5. 어제 대비 변화
+    # 5. 어제 대비 변화 (종합 + 엔터 통합)
     yesterday_diff = None
     if yesterday_keywords is not None:
-        today_kws = [kw.keyword for kw in top_keywords]
+        today_kws = [kw.keyword for kw in top_keywords] + [
+            kw.keyword for kw in entertainment_keywords
+        ]
         yesterday_diff = compute_yesterday_diff(today_kws, yesterday_keywords)
 
     report = ReportData(
