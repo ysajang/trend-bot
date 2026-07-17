@@ -127,3 +127,27 @@ def cleanup_old_data(keep_days: int = 7):
 
     if removed:
         logger.info(f"오래된 데이터 {removed}개 삭제 (보관 기간: {keep_days}일)")
+
+
+def load_recent_keyword_sets(days: int) -> list[set[str]]:
+    """
+    최근 N일(오늘 제외) 키워드 세트 로드 (연속 등장 판별용)
+
+    Returns:
+        [어제 키워드 세트, 그제 키워드 세트, ...] (없는 날은 빈 세트)
+    """
+    result: list[set[str]] = []
+    for i in range(1, days + 1):
+        day = (datetime.now(KST) - timedelta(days=i)).strftime("%Y-%m-%d")
+        path = config.DATA_DIR / f"{day}.json"
+        data = load_daily_data(path)
+        if data is None:
+            result.append(set())
+            continue
+        kws = {
+            kw.get("keyword", "")
+            for kw in data.get("keywords", [])
+            if kw.get("keyword")
+        }
+        result.append(kws)
+    return result

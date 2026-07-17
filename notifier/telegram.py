@@ -47,6 +47,15 @@ def format_report(report: ReportData) -> str:
     lines.append(f"📝 RSS {report.total_rss} + 뉴스 {report.total_news} + DataLab {report.total_datalab}")
     lines.append("")
 
+    # ── 섹션 0: ⭐ 조사할 가치 (행동 트리거 충족) ──
+    if report.action_signals:
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append("⭐ 조사할 가치 (빈도5+ / 검색수요 / 3일연속)")
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        for kw in report.action_signals:
+            lines.append(f"⭐ {kw.keyword} ({kw.count}회) {kw.source_tag}")
+        lines.append("")
+
     # ── 섹션 1: 급상승 키워드 TOP 10 ──
     lines.append("━━━━━━━━━━━━━━━━━━━━")
     lines.append("🔥 급상승 키워드 TOP 10")

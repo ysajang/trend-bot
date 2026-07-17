@@ -23,7 +23,10 @@ from collector.naver_news import search_by_keywords
 from collector.naver_datalab import verify_trends
 from analyzer.keyword_extractor import analyze_keywords
 from analyzer.report_builder import build_report
-from storage.json_store import save_daily_data, load_yesterday_keywords, cleanup_old_data
+from storage.json_store import (
+    save_daily_data, load_yesterday_keywords, cleanup_old_data,
+    load_recent_keyword_sets,
+)
 from notifier.telegram import format_report, send_report
 
 KST = timezone(timedelta(hours=9))
@@ -116,6 +119,9 @@ async def run() -> int:
 
     # ── 어제 데이터 로드 (대비 비교용) ──
     yesterday_keywords = load_yesterday_keywords()
+    recent_kw_sets = load_recent_keyword_sets(
+        config.ACTION_TRIGGER_CONSECUTIVE_DAYS - 1,
+    )
 
     # ── 데이터 저장 (오늘) ──
     save_daily_data(
@@ -134,6 +140,7 @@ async def run() -> int:
         keyword_results=keyword_results,
         yesterday_keywords=yesterday_keywords,
         entertainment_results=ent_keyword_results,
+        recent_keyword_sets=recent_kw_sets,
     )
 
     # ── 텔레그램 발송 ──

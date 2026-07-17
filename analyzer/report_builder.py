@@ -15,6 +15,7 @@
 import logging
 from dataclasses import dataclass, field
 
+import config
 from collector.trend_item import TrendItem
 from analyzer.keyword_extractor import KeywordResult
 
@@ -71,6 +72,9 @@ class ReportData:
 
     # 섹션 5: 엔터/문화/게임 트렌드 TOP (엔터 카테고리 전용)
     entertainment_keywords: list[TopKeyword] = field(default_factory=list)
+
+    # 섹션 6: ⭐ 행동 트리거 충족 키워드 (조사할 가치)
+    action_signals: list[TopKeyword] = field(default_factory=list)
 
 
 def _map_datalab_tags(
@@ -359,6 +363,40 @@ def _build_top_keywords(
     return results
 
 
+def _compute_action_signals(
+    all_keywords: list[TopKeyword],
+    recent_keyword_sets: list[set[str]] | None,
+) -> list[TopKeyword]:
+    """
+    ⭐ 행동 트리거 충족 키워드 판별
+
+    기준 (모두 충족):
+      1. 빈도 >= ACTION_TRIGGER_MIN_COUNT
+      2. source_tag ∈ ACTION_TRIGGER_SOURCE_TAGS (검색 수요 검증)
+      3. 최근 (CONSECUTIVE_DAYS - 1)일 모두 등장 (오늘 포함 N일 연속)
+
+    Args:
+        all_keywords: 종합 + 엔터 TopKeyword 전체
+        recent_keyword_sets: [어제 세트, 그제 세트, ...] (json_store 제공)
+    """
+    need_days = config.ACTION_TRIGGER_CONSECUTIVE_DAYS - 1  # 오늘 제외 과거일수
+    past_sets = (recent_keyword_sets or [])[:need_days]
+
+    signals: list[TopKeyword] = []
+    for kw in all_keywords:
+        if kw.count < config.ACTION_TRIGGER_MIN_COUNT:
+            continue
+        if kw.source_tag not in config.ACTION_TRIGGER_SOURCE_TAGS:
+            continue
+        # 과거 데이터가 부족하면(초기 운영) 연속성 조건 미충족 처리
+        if len(past_sets) < need_days:
+            continue
+        if not all(kw.keyword in day_set for day_set in past_sets):
+            continue
+        signals.append(kw)
+    return signals
+
+
 def build_report(
     layer1_items: list[TrendItem],
     layer2_items: list[TrendItem],
@@ -366,6 +404,7 @@ def build_report(
     keyword_results: list[KeywordResult],
     yesterday_keywords: list[str] | None = None,
     entertainment_results: list[KeywordResult] | None = None,
+    recent_keyword_sets: list[set[str]] | None = None,
 ) -> ReportData:
     """
     규칙기반 리포트 생성 (메인 함수)
@@ -422,6 +461,11 @@ def build_report(
         ]
         yesterday_diff = compute_yesterday_diff(today_kws, yesterday_keywords)
 
+    # 6. ⭐ 행동 트리거 (종합 + 엔터 전체 대상)
+    action_signals = _compute_action_signals(
+        top_keywords + entertainment_keywords, recent_keyword_sets,
+    )
+
     report = ReportData(
         total_rss=len(layer1_items),
         total_news=len(layer2_items),
@@ -431,6 +475,7 @@ def build_report(
         trend_highlights=trend_highlights,
         yesterday_diff=yesterday_diff,
         entertainment_keywords=entertainment_keywords,
+        action_signals=action_signals,
     )
 
     logger.info(

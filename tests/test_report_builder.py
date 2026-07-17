@@ -676,3 +676,42 @@ class TestEntertainmentSection:
         """엔터 결과 없으면 빈 리스트"""
         report = build_report([], [], [], [])
         assert report.entertainment_keywords == []
+
+
+# ── ⭐ 행동 트리거 테스트 ──
+
+from analyzer.report_builder import _compute_action_signals
+
+
+class TestActionSignals:
+    def _kw(self, keyword, count, source_tag=""):
+        return TopKeyword(keyword=keyword, count=count, source_tag=source_tag)
+
+    def test_all_conditions_met(self):
+        kws = [self._kw("호르무즈", 10, "🔥 진짜트렌드")]
+        recent = [{"호르무즈"}, {"호르무즈"}]  # 어제 + 그제 모두 등장
+        signals = _compute_action_signals(kws, recent)
+        assert len(signals) == 1
+        assert signals[0].keyword == "호르무즈"
+
+    def test_low_count_excluded(self):
+        kws = [self._kw("캐슬바니아", 2, "🔥 진짜트렌드")]
+        recent = [{"캐슬바니아"}, {"캐슬바니아"}]
+        assert _compute_action_signals(kws, recent) == []
+
+    def test_no_search_demand_excluded(self):
+        """📰 미디어주도는 트리거 아님"""
+        kws = [self._kw("호우", 50, "📰 미디어주도")]
+        recent = [{"호우"}, {"호우"}]
+        assert _compute_action_signals(kws, recent) == []
+
+    def test_not_consecutive_excluded(self):
+        kws = [self._kw("폭염", 8, "🔍 대중관심")]
+        recent = [{"폭염"}, set()]  # 그제 미등장
+        assert _compute_action_signals(kws, recent) == []
+
+    def test_insufficient_history_excluded(self):
+        """운영 초기(과거 데이터 부족) → 트리거 미충족"""
+        kws = [self._kw("폭염", 8, "🔍 대중관심")]
+        assert _compute_action_signals(kws, None) == []
+        assert _compute_action_signals(kws, [{"폭염"}]) == []
