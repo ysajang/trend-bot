@@ -100,6 +100,53 @@ def format_report(report: ReportData) -> str:
                 lines.append(f"▸ [{kw.keyword}] {title}")
         lines.append("")
 
+    # ── 섹션 3.5: 🎯 Steam 선행지표 ──
+    if report.steam_games:
+        most_played = [g for g in report.steam_games if g.get("chart") == "most_played"]
+        top_sellers = [g for g in report.steam_games if g.get("chart") == "top_sellers_kr"]
+
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append("🎯 Steam 선행지표")
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+
+        def _change_mark(g: dict) -> str:
+            ch = g.get("rank_change")
+            if ch is None:
+                return " 🆕"
+            if ch >= 3:
+                return f" 🚀+{ch}"
+            if ch > 0:
+                return f" ↑{ch}"
+            if ch < 0:
+                return f" ↓{abs(ch)}"
+            return ""
+
+        if most_played:
+            lines.append("🌐 글로벌 동접 TOP 5")
+            for g in most_played[:5]:
+                name = g.get("name") or f"appid {g.get('appid')}"
+                genres = "/".join(g.get("genres", [])[:2])
+                genre_str = f" [{genres}]" if genres else ""
+                lines.append(f"{g.get('rank')}. {name}{genre_str}{_change_mark(g)}")
+
+        if top_sellers:
+            lines.append("")
+            lines.append("🇰🇷 한국 판매 TOP 5")
+            for g in top_sellers[:5]:
+                name = g.get("name") or f"appid {g.get('appid')}"
+                lines.append(f"{g.get('rank')}. {name}{_change_mark(g)}")
+
+        # 급상승 게임 별도 강조 (선행지표 핵심)
+        risers = [
+            g for g in report.steam_games
+            if g.get("rank_change") is not None and g.get("rank_change") >= 3
+        ]
+        if risers:
+            lines.append("")
+            riser_names = [g.get("name") or str(g.get("appid")) for g in risers]
+            lines.append(f"🚀 급상승 주목: {' / '.join(riser_names)}")
+        lines.append("")
+
     # ── 섹션 4: 7일 추이 요약 (종합 + 엔터 통합) ──
     if report.trend_highlights:
         lines.append("━━━━━━━━━━━━━━━━━━━━")

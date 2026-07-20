@@ -21,6 +21,7 @@ from collector import TrendItem
 from collector.rss_collector import fetch_all_feeds, ENTERTAINMENT_CATEGORIES
 from collector.naver_news import search_by_keywords
 from collector.naver_datalab import verify_trends
+from collector.steam_charts import fetch_steam_signals
 from analyzer.keyword_extractor import analyze_keywords
 from analyzer.report_builder import build_report
 from storage.json_store import (
@@ -132,6 +133,14 @@ async def run() -> int:
     # ── 오래된 데이터 정리 ──
     cleanup_old_data(keep_days=7)
 
+    # ── Steam 선행지표 수집 (실패해도 리포트 진행) ──
+    steam_games: list[dict] = []
+    try:
+        steam_results = await fetch_steam_signals()
+        steam_games = [g.to_dict() for g in steam_results]
+    except Exception as e:
+        logger.error(f"Steam 수집 실패 (리포트는 계속): {e}")
+
     # ── 규칙기반 리포트 생성 ──
     report = build_report(
         layer1_items=layer1_items,
@@ -141,6 +150,7 @@ async def run() -> int:
         yesterday_keywords=yesterday_keywords,
         entertainment_results=ent_keyword_results,
         recent_keyword_sets=recent_kw_sets,
+        steam_games=steam_games,
     )
 
     # ── 텔레그램 발송 ──

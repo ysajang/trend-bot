@@ -76,6 +76,9 @@ class ReportData:
     # 섹션 6: ⭐ 행동 트리거 충족 키워드 (조사할 가치)
     action_signals: list[TopKeyword] = field(default_factory=list)
 
+    # 섹션 7: Steam 선행지표 (dict 리스트 — SteamGame.to_dict())
+    steam_games: list[dict] = field(default_factory=list)
+
 
 def _map_datalab_tags(
     layer3_items: list[TrendItem],
@@ -405,6 +408,7 @@ def build_report(
     yesterday_keywords: list[str] | None = None,
     entertainment_results: list[KeywordResult] | None = None,
     recent_keyword_sets: list[set[str]] | None = None,
+    steam_games: list[dict] | None = None,
 ) -> ReportData:
     """
     규칙기반 리포트 생성 (메인 함수)
@@ -476,6 +480,7 @@ def build_report(
         yesterday_diff=yesterday_diff,
         entertainment_keywords=entertainment_keywords,
         action_signals=action_signals,
+        steam_games=steam_games or [],
     )
 
     logger.info(
