@@ -152,6 +152,7 @@ def extract_nouns(text: str) -> list[str]:
         if tag not in ("NNG", "NNP", "SL"):
             continue
         word = form.strip()
+        word = word.strip(".·,'\"!?")  # 끝 특수문자 정규화 (DK. → DK)
         if not word or len(word) < config.MIN_KEYWORD_LENGTH or word.isdigit():
             continue
 
