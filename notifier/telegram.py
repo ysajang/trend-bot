@@ -204,6 +204,37 @@ def split_message(text: str) -> list[str]:
     return messages
 
 
+async def send_message(text: str) -> bool:
+    """
+    임의 텍스트를 텔레그램으로 전송 (길이 초과 시 자동 분할)
+
+    Args:
+        text: 보낼 메시지
+
+    Returns:
+        전송 성공 여부
+    """
+    if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_CHAT_ID:
+        logger.error("텔레그램 설정이 없습니다 (.env 확인)")
+        return False
+
+    bot = telegram.Bot(token=config.TELEGRAM_BOT_TOKEN)
+    messages = split_message(text)
+
+    try:
+        for msg in messages:
+            await bot.send_message(
+                chat_id=config.TELEGRAM_CHAT_ID,
+                text=msg,
+                parse_mode=None,  # 마크다운 파싱 오류 방지
+            )
+        logger.info(f"텔레그램 전송 완료 ({len(messages)}개 메시지 / {len(text)}자)")
+        return True
+    except Exception as e:
+        logger.error(f"텔레그램 전송 실패: {e}")
+        return False
+
+
 async def send_report(report: ReportData) -> bool:
     """
     텔레그램으로 리포트 전송
@@ -214,23 +245,4 @@ async def send_report(report: ReportData) -> bool:
     Returns:
         전송 성공 여부
     """
-    if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_CHAT_ID:
-        logger.error("텔레그램 설정이 없습니다 (.env 확인)")
-        return False
-
-    formatted = format_report(report)
-    bot = telegram.Bot(token=config.TELEGRAM_BOT_TOKEN)
-    messages = split_message(formatted)
-
-    try:
-        for msg in messages:
-            await bot.send_message(
-                chat_id=config.TELEGRAM_CHAT_ID,
-                text=msg,
-                parse_mode=None,  # 마크다운 파싱 오류 방지
-            )
-        logger.info(f"텔레그램 전송 완료 ({len(messages)}개 메시지 / {len(formatted)}자)")
-        return True
-    except Exception as e:
-        logger.error(f"텔레그램 전송 실패: {e}")
-        return False
+    return await send_message(format_report(report))
