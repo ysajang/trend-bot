@@ -10,8 +10,10 @@ scan_genre_gaps.py가 추린 후보를 진입 판단 가능한 수준까지 분�
 
 import argparse
 import asyncio
+import json
 import logging
 import sys
+from pathlib import Path
 
 from collector.steam_deep_dive import deep_dive, GenreDeepDive
 from collector.steam_genre_gap import SOLO_DEV_TAGS
@@ -78,20 +80,46 @@ def format_deep_dive(d: GenreDeepDive) -> str:
         top = [f"{w}({c})" for w, c in d.complaints[:8]]
         lines.append(f"😠 부정리뷰 빈출: {' / '.join(top)}")
 
+    # 불만 원문 발췌 (키워드가 실제 무슨 불만인지 확인용)
+    if d.excerpts:
+        lines.append("")
+        lines.append("📝 불만 원문")
+        current_kw = ""
+        for e in d.excerpts:
+            if e.keyword != current_kw:
+                current_kw = e.keyword
+                lines.append(f"[{e.keyword}]")
+            sentence = e.sentence
+            if len(sentence) > 150:
+                sentence = sentence[:147] + "..."
+            lines.append(f"  · {sentence} ({e.game_name[:18]}, {e.playtime_hours:.0f}h)")
+
     return "\n".join(lines)
 
 
 async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-send", action="store_true")
+    parser.add_argument(
+        "--tags", nargs=2, metavar=("TAG_A", "TAG_B"),
+        help="특정 조합만 분석 (예: --tags 로그라이크 '도시 건설')",
+    )
+    parser.add_argument(
+        "--json", metavar="PATH", help="전체 결과를 JSON 파일로 저장",
+    )
     args = parser.parse_args()
 
+    targets = [tuple(args.tags)] if args.tags else CANDIDATES
+
     results: list[GenreDeepDive] = []
-    for name_a, name_b in CANDIDATES:
+    for name_a, name_b in targets:
         id_a = SOLO_DEV_TAGS.get(name_a)
         id_b = SOLO_DEV_TAGS.get(name_b)
         if id_a is None or id_b is None:
-            logger.error(f"태그 ID 없음: {name_a} / {name_b}")
+            logger.error(
+                f"태그 ID 없음: {name_a} / {name_b} "
+                f"(사용 가능: {', '.join(SOLO_DEV_TAGS)})"
+            )
             continue
         result = await deep_dive((name_a, name_b), (id_a, id_b))
         results.append(result)
@@ -99,6 +127,15 @@ async def main() -> int:
     if not results:
         logger.error("분석 결과 없음")
         return 1
+
+    if args.json:
+        path = Path(args.json)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps([r.to_dict() for r in results], ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        logger.info(f"JSON 저장: {path}")
 
     blocks = ["🔬 장르 후보 심층 검증", ""]
     for r in results:

@@ -105,6 +105,23 @@ class GameRecord:
 
 
 @dataclass
+class ComplaintExcerpt:
+    """불만 키워드가 등장한 리뷰 원문 발췌"""
+    keyword: str
+    game_name: str
+    sentence: str
+    playtime_hours: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "keyword": self.keyword,
+            "game": self.game_name,
+            "sentence": self.sentence,
+            "playtime_hours": round(self.playtime_hours, 1),
+        }
+
+
+@dataclass
 class GenreDeepDive:
     """장르 조합 심층 분석 결과"""
     tag_names: tuple[str, str]
@@ -115,6 +132,7 @@ class GenreDeepDive:
     review_quartiles: tuple[int, int, int] = (0, 0, 0)  # Q1, 중앙값, Q3
     small_successes: list[GameRecord] = field(default_factory=list)
     complaints: list[tuple[str, int]] = field(default_factory=list)
+    excerpts: list[ComplaintExcerpt] = field(default_factory=list)
     free_ratio: float = 0.0
 
     def to_dict(self) -> dict:
@@ -137,6 +155,7 @@ class GenreDeepDive:
                 for g in self.small_successes
             ],
             "complaints": [{"word": w, "count": c} for w, c in self.complaints],
+            "excerpts": [e.to_dict() for e in self.excerpts],
         }
 
 
@@ -225,11 +244,55 @@ async def _collect_games(
     return total, all_records
 
 
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?。！？])\s+|\n+")
+MAX_SENTENCE_LEN = 220
+EXCERPTS_PER_KEYWORD = 3
+
+
+def _extract_keywords(text: str) -> set[str]:
+    """리뷰 본문에서 불만 후보 키워드 추출 (불용어/단문 배제)"""
+    words: set[str] = set()
+    for word in set(extract_nouns(text)):
+        w = word.lower()
+        if w in COMPLAINT_STOPWORDS:
+            continue
+        if w.isascii() and len(w) < 4:
+            continue
+        if len(w) < 2:
+            continue
+        words.add(word)
+    return words
+
+
+def _find_sentences(text: str, keyword: str) -> list[str]:
+    """키워드가 포함된 문장만 추출 (길이 제한 적용)"""
+    kw = keyword.lower()
+    hits: list[str] = []
+    for raw in SENTENCE_SPLIT.split(text):
+        s = " ".join(raw.split())
+        if not s or kw not in s.lower():
+            continue
+        if len(s) > MAX_SENTENCE_LEN:
+            # 키워드 주변만 잘라냄
+            idx = s.lower().index(kw)
+            start = max(0, idx - MAX_SENTENCE_LEN // 2)
+            s = ("..." if start > 0 else "") + s[start:start + MAX_SENTENCE_LEN] + "..."
+        hits.append(s)
+    return hits
+
+
 async def _collect_complaints(
     session: aiohttp.ClientSession, games: list[GameRecord],
-) -> list[tuple[str, int]]:
-    """상위 게임들의 부정 리뷰에서 반복 불만 키워드 추출"""
+) -> tuple[list[tuple[str, int]], list[ComplaintExcerpt]]:
+    """
+    상위 게임들의 부정 리뷰에서 반복 불만 키워드 + 원문 발췌 추출
+
+    Returns:
+        (키워드 빈도 상위 목록, 대표 원문 발췌 목록)
+    """
     counter: Counter = Counter()
+    # 키워드별 (게임명, 문장, 플레이시간) 후보 보관
+    pool: dict[str, list[tuple[str, str, float]]] = {}
 
     for game in games[:REVIEW_SAMPLE_GAMES]:
         data = await _fetch_json(session, REVIEWS_URL.format(appid=game.appid))
@@ -246,18 +309,36 @@ async def _collect_complaints(
             if playtime < 30:  # 30분 미만은 판단 근거 약함
                 continue
 
-            for word in set(extract_nouns(text)):
-                w = word.lower()
-                # 영어 2자 이하는 대부분 기능어 → 배제
-                if w in COMPLAINT_STOPWORDS:
-                    continue
-                if w.isascii() and len(w) < 4:
-                    continue
-                if len(w) < 2:
-                    continue
+            hours = playtime / 60.0
+            for word in _extract_keywords(text):
                 counter[word] += 1
+                for sentence in _find_sentences(text, word)[:1]:
+                    pool.setdefault(word, []).append((game.name, sentence, hours))
 
-    return counter.most_common(12)
+    top_words = counter.most_common(12)
+
+    # 상위 키워드에 대해 플레이시간이 긴 리뷰 우선으로 발췌 선정
+    excerpts: list[ComplaintExcerpt] = []
+    for word, _count in top_words[:6]:
+        candidates = pool.get(word, [])
+        candidates.sort(key=lambda c: c[2], reverse=True)
+        seen_games: set[str] = set()
+        picked = 0
+        for game_name, sentence, hours in candidates:
+            if game_name in seen_games:  # 게임 편중 방지
+                continue
+            seen_games.add(game_name)
+            excerpts.append(ComplaintExcerpt(
+                keyword=word,
+                game_name=game_name,
+                sentence=sentence,
+                playtime_hours=hours,
+            ))
+            picked += 1
+            if picked >= EXCERPTS_PER_KEYWORD:
+                break
+
+    return top_words, excerpts
 
 
 def _quartiles(values: list[int]) -> tuple[int, int, int]:
@@ -306,7 +387,7 @@ async def deep_dive(
 
         # 불만 패턴: 성과 상위 게임 기준
         top_games = sorted(games, key=lambda g: g.review_count, reverse=True)
-        complaints = await _collect_complaints(session, top_games)
+        complaints, excerpts = await _collect_complaints(session, top_games)
 
     result = GenreDeepDive(
         tag_names=tag_names,
@@ -317,6 +398,7 @@ async def deep_dive(
         review_quartiles=quartiles,
         small_successes=small[:8],
         complaints=complaints,
+        excerpts=excerpts,
         free_ratio=free_ratio,
     )
     logger.info(
