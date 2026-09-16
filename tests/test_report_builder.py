@@ -787,6 +787,45 @@ class TestActionSignals:
         assert _compute_action_signals(kws, [{"폭염"}]) == []
 
 
+class TestActionSignalsEvergreen:
+    """상시 등장 키워드는 ⭐ 대상에서 제외 (AI처럼 매일 나와 행동으로 이어지지 않음)"""
+
+    def _kw(self, keyword, count, source_tag=""):
+        return TopKeyword(keyword=keyword, count=count, source_tag=source_tag)
+
+    def test_evergreen_excluded(self):
+        """6일 중 6일 등장 → 나머지 조건을 충족해도 제외"""
+        kws = [self._kw("AI", 56, "🔥 진짜트렌드")]
+        recent = [{"AI"} for _ in range(6)]
+        assert _compute_action_signals(kws, recent) == []
+
+    def test_min_days_boundary_excluded(self):
+        """6일 중 5일 등장 → 제외 (MIN_DAYS = 5)"""
+        kws = [self._kw("AI", 56, "🔥 진짜트렌드")]
+        recent = [{"AI"}, {"AI"}, {"AI"}, {"AI"}, {"AI"}, set()]
+        assert _compute_action_signals(kws, recent) == []
+
+    def test_recent_spike_included(self):
+        """어제·그제만 등장(6일 중 2일) → 포함"""
+        kws = [self._kw("호르무즈", 10, "🔥 진짜트렌드")]
+        recent = [{"호르무즈"}, {"호르무즈"}, set(), set(), set(), set()]
+        signals = _compute_action_signals(kws, recent)
+        assert [s.keyword for s in signals] == ["호르무즈"]
+
+    def test_four_of_six_included(self):
+        """6일 중 4일 등장 → 상시 아님 (연속 조건은 앞 2일만 봄)"""
+        kws = [self._kw("금리", 13, "🔍 대중관심")]
+        recent = [{"금리"}, {"금리"}, set(), {"금리"}, {"금리"}, set()]
+        signals = _compute_action_signals(kws, recent)
+        assert [s.keyword for s in signals] == ["금리"]
+
+    def test_short_history_skips_evergreen_check(self):
+        """과거 세트가 LOOKBACK 미만이면 상시 조건 미적용 (기존 동작 유지)"""
+        kws = [self._kw("AI", 56, "🔥 진짜트렌드")]
+        signals = _compute_action_signals(kws, [{"AI"}, {"AI"}])
+        assert [s.keyword for s in signals] == ["AI"]
+
+
 # ── 사건 단위 키워드 병합 테스트 ──
 
 from analyzer.report_builder import _merge_event_keywords

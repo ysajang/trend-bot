@@ -121,7 +121,10 @@ async def run() -> int:
     # ── 어제 데이터 로드 (대비 비교용) ──
     yesterday_keywords = load_yesterday_keywords()
     recent_kw_sets = load_recent_keyword_sets(
-        config.ACTION_TRIGGER_CONSECUTIVE_DAYS - 1,
+        max(
+            config.ACTION_TRIGGER_CONSECUTIVE_DAYS - 1,
+            config.ACTION_EVERGREEN_LOOKBACK_DAYS,
+        ),
     )
 
     # ── 데이터 저장 (오늘) ──

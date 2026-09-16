@@ -436,13 +436,19 @@ def _compute_action_signals(
       1. 빈도 >= ACTION_TRIGGER_MIN_COUNT
       2. source_tag ∈ ACTION_TRIGGER_SOURCE_TAGS (검색 수요 검증)
       3. 최근 (CONSECUTIVE_DAYS - 1)일 모두 등장 (오늘 포함 N일 연속)
+      4. 상시 키워드가 아님 — 최근 EVERGREEN_LOOKBACK_DAYS일 중
+         EVERGREEN_MIN_DAYS일 이상 등장하면 제외
+         (과거 세트가 LOOKBACK일치에 못 미치면 이 조건은 적용하지 않음)
 
     Args:
         all_keywords: 종합 + 엔터 TopKeyword 전체
         recent_keyword_sets: [어제 세트, 그제 세트, ...] (json_store 제공)
     """
     need_days = config.ACTION_TRIGGER_CONSECUTIVE_DAYS - 1  # 오늘 제외 과거일수
-    past_sets = (recent_keyword_sets or [])[:need_days]
+    all_past = recent_keyword_sets or []
+    past_sets = all_past[:need_days]
+    lookback = config.ACTION_EVERGREEN_LOOKBACK_DAYS
+    evergreen_sets = all_past[:lookback] if len(all_past) >= lookback else None
 
     signals: list[TopKeyword] = []
     for kw in all_keywords:
@@ -455,6 +461,11 @@ def _compute_action_signals(
             continue
         if not all(kw.keyword in day_set for day_set in past_sets):
             continue
+        # 상시 등장 키워드 제외
+        if evergreen_sets is not None:
+            days_seen = sum(1 for day_set in evergreen_sets if kw.keyword in day_set)
+            if days_seen >= config.ACTION_EVERGREEN_MIN_DAYS:
+                continue
         signals.append(kw)
     return signals
 

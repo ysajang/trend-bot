@@ -195,6 +195,12 @@ ACTION_TRIGGER_MIN_COUNT = 5
 ACTION_TRIGGER_CONSECUTIVE_DAYS = 3
 ACTION_TRIGGER_SOURCE_TAGS = ("🔥 진짜트렌드", "🔍 대중관심")
 
+# 상시 키워드 제외: 최근 LOOKBACK일 중 MIN_DAYS일 이상 등장한 키워드는 ⭐ 대상 아님
+# (AI처럼 매일 등장하는 키워드는 조사할 가치가 아님)
+# LOOKBACK 6 — cleanup_old_data(keep_days=7)가 오늘 포함 7일치를 남기므로 과거 최대 6일
+ACTION_EVERGREEN_LOOKBACK_DAYS = 6
+ACTION_EVERGREEN_MIN_DAYS = 5
+
 # ──────────────────────────────────────────────
 # 사건 단위 병합
 # 키워드 B의 제목 중 CONTAINMENT 이상이 상위 키워드 A 묶음의 제목과 겹치고
