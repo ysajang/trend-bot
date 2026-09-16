@@ -194,3 +194,12 @@ ENTERTAINMENT_STOPWORDS = {
 ACTION_TRIGGER_MIN_COUNT = 5
 ACTION_TRIGGER_CONSECUTIVE_DAYS = 3
 ACTION_TRIGGER_SOURCE_TAGS = ("🔥 진짜트렌드", "🔍 대중관심")
+
+# ──────────────────────────────────────────────
+# 사건 단위 병합
+# 키워드 B의 제목 중 CONTAINMENT 이상이 상위 키워드 A 묶음의 제목과 겹치고
+# 겹친 제목이 MIN_SHARED건 이상이면 B를 A에 병합
+# (한 사건이 서울/버스/노사/시내처럼 여러 칸을 차지하는 문제 해소)
+# ──────────────────────────────────────────────
+EVENT_MERGE_CONTAINMENT = 0.6
+EVENT_MERGE_MIN_SHARED = 3

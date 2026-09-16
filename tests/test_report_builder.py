@@ -715,3 +715,165 @@ class TestActionSignals:
         kws = [self._kw("폭염", 8, "🔍 대중관심")]
         assert _compute_action_signals(kws, None) == []
         assert _compute_action_signals(kws, [{"폭염"}]) == []
+
+
+# ── 사건 단위 키워드 병합 테스트 ──
+
+from analyzer.report_builder import _merge_event_keywords
+
+
+class TestEventMerge:
+    """같은 사건을 가리키는 키워드를 대표 키워드 하나로 묶는다"""
+
+    def test_same_event_keywords_merged(self):
+        """서울 시내버스 파업 계열 → '서울' 한 줄로"""
+        event_titles = [f"서울 시내버스 파업 타결 {i}" for i in range(10)]
+        kws = [
+            KeywordResult(
+                keyword="서울", count=40,
+                related_titles=event_titles + [f"서울시 기타 소식 {i}" for i in range(5)],
+            ),
+            KeywordResult(keyword="버스", count=34, related_titles=event_titles),
+            KeywordResult(keyword="노사", count=27, related_titles=event_titles[:8]),
+        ]
+        merged = _merge_event_keywords(kws)
+
+        assert len(merged) == 1
+        rep, absorbed = merged[0]
+        assert rep.keyword == "서울"
+        assert absorbed == ["버스", "노사"]
+
+    def test_count_not_summed(self):
+        """병합해도 대표의 빈도는 합산하지 않는다 (같은 제목 중복 집계 방지)"""
+        titles = [f"제목{i}" for i in range(10)]
+        kws = [
+            KeywordResult(keyword="서울", count=40, related_titles=titles),
+            KeywordResult(keyword="버스", count=34, related_titles=titles),
+        ]
+        rep, absorbed = _merge_event_keywords(kws)[0]
+        assert rep.count == 40
+
+    def test_unrelated_keyword_not_absorbed(self):
+        """A(제목 50개) / B(제목 10개 중 3개만 공유) → containment 0.3 → 병합 안 됨"""
+        a_titles = [f"A제목{i}" for i in range(50)]
+        b_titles = a_titles[:3] + [f"B제목{i}" for i in range(7)]
+        kws = [
+            KeywordResult(keyword="AI", count=56, related_titles=a_titles),
+            KeywordResult(keyword="안전", count=10, related_titles=b_titles),
+        ]
+        merged = _merge_event_keywords(kws)
+
+        assert len(merged) == 2
+        assert [rep.keyword for rep, _ in merged] == ["AI", "안전"]
+        assert merged[0][1] == []
+
+    def test_min_shared_not_met(self):
+        """shared가 2면 containment 1.0이어도 병합 안 됨"""
+        a_titles = [f"A제목{i}" for i in range(10)]
+        kws = [
+            KeywordResult(keyword="AI", count=56, related_titles=a_titles),
+            KeywordResult(keyword="반도체", count=8, related_titles=a_titles[:2]),
+        ]
+        merged = _merge_event_keywords(kws)
+
+        assert len(merged) == 2
+        assert merged[0][1] == []
+
+    def test_empty_titles_never_merged(self):
+        """related_titles가 비면 병합 대상이 아니다"""
+        kws = [
+            KeywordResult(keyword="AI", count=56, related_titles=[f"A{i}" for i in range(10)]),
+            KeywordResult(keyword="빈것", count=5, related_titles=[]),
+        ]
+        merged = _merge_event_keywords(kws)
+        assert [rep.keyword for rep, _ in merged] == ["AI", "빈것"]
+
+    def test_merged_into_highest_containment(self):
+        """조건을 만족하는 대표가 여럿이면 containment가 가장 높은 쪽에 병합"""
+        shared_ab = [f"S{i}" for i in range(6)]
+        a_titles = shared_ab + [f"A{i}" for i in range(10)]
+        b_titles = shared_ab + [f"B{i}" for i in range(10)]
+        # C(10건): A와 6건(0.6) / B와 8건(0.8) 공유 → B로
+        c_titles = shared_ab + ["B0", "B1", "C0", "C1"]
+        kws = [
+            KeywordResult(keyword="A", count=50, related_titles=a_titles),
+            # B는 A와 6/16=0.375 라 병합되지 않고 대표로 남는다
+            KeywordResult(keyword="B", count=40, related_titles=b_titles),
+            KeywordResult(keyword="C", count=30, related_titles=c_titles),
+        ]
+        merged = _merge_event_keywords(kws)
+
+        assert len(merged) == 2
+        assert merged[0][1] == []          # A는 흡수 안 함
+        assert merged[1][1] == ["C"]       # B가 C를 흡수
+
+    def test_accumulated_titles_used(self):
+        """대표의 제목집합은 병합된 키워드의 제목까지 누적한다"""
+        a_titles = [f"A{i}" for i in range(10)]
+        b_titles = [f"B{i}" for i in range(10)]
+        kws = [
+            KeywordResult(keyword="A", count=50, related_titles=a_titles),
+            # B: A와 6건 공유(0.6) → A에 병합, A 집합에 B0~B3 추가
+            KeywordResult(keyword="B", count=40, related_titles=a_titles[:6] + b_titles[:4]),
+            # C: A 원본과는 2건뿐이지만 누적집합과는 5건(1.0) → A에 병합
+            KeywordResult(keyword="C", count=30, related_titles=a_titles[:1] + b_titles[:4]),
+        ]
+        merged = _merge_event_keywords(kws)
+
+        assert len(merged) == 1
+        assert merged[0][1] == ["B", "C"]
+
+    def test_existing_fixture_never_merges(self):
+        """_make_keyword_result는 키워드마다 제목이 달라 병합이 일어나지 않는다"""
+        kws = [_make_keyword_result(f"키워드{i}", 20 - i) for i in range(12)]
+        merged = _merge_event_keywords(kws)
+
+        assert len(merged) == 12
+        assert all(absorbed == [] for _, absorbed in merged)
+
+
+class TestEventMergeInReport:
+    """병합 결과가 build_report / TopKeyword 에 반영된다"""
+
+    def test_merged_keywords_recorded(self):
+        event_titles = [f"서울 시내버스 파업 타결 {i}" for i in range(10)]
+        kws = [
+            KeywordResult(keyword="서울", count=40, related_titles=event_titles),
+            KeywordResult(keyword="버스", count=34, related_titles=event_titles),
+        ]
+        report = build_report([], [], [], kws)
+
+        assert len(report.top_keywords) == 1
+        assert report.top_keywords[0].keyword == "서울"
+        assert report.top_keywords[0].merged_keywords == ["버스"]
+
+    def test_merged_slots_refilled(self):
+        """12개 중 2개가 병합되면 TOP 10은 11·12번째 대표로 채워진다"""
+        base = [
+            KeywordResult(
+                keyword=f"키워드{i}", count=50 - i,
+                related_titles=[f"키워드{i} 제목{j}" for j in range(10)],
+            )
+            for i in range(12)
+        ]
+        # 키워드2 / 키워드4 를 키워드0 에 흡수시킨다
+        base[2] = KeywordResult(
+            keyword="키워드2", count=48, related_titles=base[0].related_titles[:10],
+        )
+        base[4] = KeywordResult(
+            keyword="키워드4", count=46, related_titles=base[0].related_titles[:8],
+        )
+        report = build_report([], [], [], base)
+
+        names = [kw.keyword for kw in report.top_keywords]
+        assert len(names) == 10
+        assert "키워드2" not in names
+        assert "키워드4" not in names
+        assert "키워드10" in names
+        assert "키워드11" in names
+        assert report.top_keywords[0].merged_keywords == ["키워드2", "키워드4"]
+
+    def test_no_merge_keeps_empty_list(self):
+        kws = [_make_keyword_result(f"키워드{i}", 20 - i) for i in range(3)]
+        report = build_report([], [], [], kws)
+        assert all(kw.merged_keywords == [] for kw in report.top_keywords)

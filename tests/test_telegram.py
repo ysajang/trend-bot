@@ -38,6 +38,7 @@ def _make_top_kw(
     trend_tag: str = "유지",
     news_title: str = "",
     news_url: str = "",
+    merged_keywords=None,
 ) -> TopKeyword:
     return TopKeyword(
         keyword=keyword,
@@ -45,6 +46,7 @@ def _make_top_kw(
         trend_tag=trend_tag,
         representative_news_title=news_title,
         representative_news_url=news_url,
+        merged_keywords=merged_keywords or [],
     )
 
 
@@ -73,6 +75,33 @@ class TestFormatReport:
         assert "2. 비트코인 (12회)" in result
         assert "🔺 급상승" in result
         assert "📈 지속상승" in result
+
+    def test_merged_keywords_suffix(self):
+        """병합된 키워드는 줄 끝에 (+버스/노사/시내) 로 표기"""
+        keywords = [
+            _make_top_kw("서울", 40, merged_keywords=["버스", "노사", "시내"]),
+        ]
+        report = _make_report(top_keywords=keywords)
+        result = format_report(report)
+
+        assert "1. 서울 (40회) ➖ 유지 (+버스/노사/시내)" in result
+
+    def test_no_merged_keywords_keeps_original_line(self):
+        """병합이 없으면 기존 출력과 완전히 동일"""
+        keywords = [_make_top_kw("삼성전자", 15, "급상승")]
+        report = _make_report(top_keywords=keywords)
+        result = format_report(report)
+
+        assert "1. 삼성전자 (15회) 🔺 급상승" in result
+        assert "(+" not in result
+
+    def test_merged_keywords_in_entertainment_section(self):
+        ent = [_make_top_kw("엘든링", 6, merged_keywords=["DLC"])]
+        report = _make_report()
+        report.entertainment_keywords = ent
+        result = format_report(report)
+
+        assert "1. 엘든링 (6회) ➖ 유지 (+DLC)" in result
 
     def test_news_cluster_section(self):
         keywords = [

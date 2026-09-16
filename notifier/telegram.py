@@ -28,6 +28,13 @@ TAG_EMOJI = {
 }
 
 
+def _format_merged(kw) -> str:
+    """병합된 키워드 표기 — 없으면 빈 문자열 (기존 출력과 동일)"""
+    if not kw.merged_keywords:
+        return ""
+    return f" (+{'/'.join(kw.merged_keywords)})"
+
+
 def format_report(report: ReportData) -> str:
     """
     ReportData → 텔레그램 메시지 포맷
@@ -63,7 +70,8 @@ def format_report(report: ReportData) -> str:
     for i, kw in enumerate(report.top_keywords, 1):
         emoji = TAG_EMOJI.get(kw.trend_tag, "·")
         source = f" {kw.source_tag}" if kw.source_tag else ""
-        lines.append(f"{i}. {kw.keyword} ({kw.count}회) {emoji} {kw.trend_tag}{source}")
+        merged = _format_merged(kw)
+        lines.append(f"{i}. {kw.keyword} ({kw.count}회) {emoji} {kw.trend_tag}{source}{merged}")
     lines.append("")
 
     # ── 섹션 2: 주요 뉴스 클러스터 ──
@@ -88,7 +96,8 @@ def format_report(report: ReportData) -> str:
         for i, kw in enumerate(report.entertainment_keywords, 1):
             emoji = TAG_EMOJI.get(kw.trend_tag, "·")
             source = f" {kw.source_tag}" if kw.source_tag else ""
-            lines.append(f"{i}. {kw.keyword} ({kw.count}회) {emoji} {kw.trend_tag}{source}")
+            merged = _format_merged(kw)
+            lines.append(f"{i}. {kw.keyword} ({kw.count}회) {emoji} {kw.trend_tag}{source}{merged}")
         # 엔터 대표 기사
         ent_news = [kw for kw in report.entertainment_keywords if kw.representative_news_title]
         if ent_news:

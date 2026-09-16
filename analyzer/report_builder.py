@@ -31,6 +31,7 @@ class TopKeyword:
     source_tag: str = ""  # 📰미디어주도 / 🔍대중관심 / 🔥진짜트렌드 / 빈 문자열
     representative_news_title: str = ""
     representative_news_url: str = ""
+    merged_keywords: list[str] = field(default_factory=list)  # 이 대표에 병합된 키워드
 
     def to_dict(self) -> dict:
         return {
@@ -316,6 +317,55 @@ def compute_yesterday_diff(
     )
 
 
+def _merge_event_keywords(
+    keyword_results: list[KeywordResult],
+) -> list[tuple[KeywordResult, list[str]]]:
+    """
+    같은 사건을 가리키는 키워드를 대표 키워드 하나로 묶는다
+
+    빈도순으로 순회하며 대표 목록을 만든다. 대표마다 제목집합(대표 + 이미 병합된
+    키워드들의 related_titles 합집합)을 누적 유지하고, 현재 키워드 B의 제목 중
+    EVENT_MERGE_CONTAINMENT 이상이 그 집합과 겹치면서 겹친 건수가
+    EVENT_MERGE_MIN_SHARED 이상이면 B를 그 대표에 병합한다.
+
+    대표의 count는 합산하지 않는다 (같은 제목이 양쪽에 중복 집계돼 부풀려짐).
+
+    Returns:
+        [(대표 KeywordResult, 병합된 키워드명 리스트), ...] — 빈도순 유지
+    """
+    # (대표, 병합된 키워드명, 누적 제목집합)
+    reps: list[tuple[KeywordResult, list[str], set[str]]] = []
+
+    for kw in keyword_results:
+        titles = set(kw.related_titles)
+        if not titles:
+            reps.append((kw, [], titles))
+            continue
+
+        best_idx = -1
+        best_containment = 0.0
+        for idx, (rep, _names, rep_titles) in enumerate(reps):
+            shared = len(titles & rep_titles)
+            if shared < config.EVENT_MERGE_MIN_SHARED:
+                continue
+            containment = shared / len(titles)
+            if containment < config.EVENT_MERGE_CONTAINMENT:
+                continue
+            # containment 최대 (동률이면 먼저 나온 대표 = 빈도 높은 쪽)
+            if containment > best_containment:
+                best_containment = containment
+                best_idx = idx
+
+        if best_idx < 0:
+            reps.append((kw, [], titles))
+        else:
+            _rep, names, rep_titles = reps[best_idx]
+            names.append(kw.keyword)
+            rep_titles |= titles
+
+    return [(rep, names) for rep, names, _titles in reps]
+
+
 def _build_top_keywords(
     keyword_results: list[KeywordResult],
     candidate_items: list[TrendItem],
@@ -330,9 +380,11 @@ def _build_top_keywords(
     (대표뉴스 매칭 + DataLab source_tag 계산 포함)
     """
     results: list[TopKeyword] = []
-    all_kw_names = [kw.keyword for kw in keyword_results[:limit]]
+    # 사건 단위 병합 후 대표 키워드로만 TOP 목록 구성
+    merged = _merge_event_keywords(keyword_results)[:limit]
+    all_kw_names = [kw.keyword for kw, _ in merged]
 
-    counts = [kw.count for kw in keyword_results[:limit]]
+    counts = [kw.count for kw, _ in merged]
     if counts:
         sorted_counts = sorted(counts)
         mid = len(sorted_counts) // 2
@@ -344,7 +396,7 @@ def _build_top_keywords(
     else:
         median_count = 0.0
 
-    for kw_result in keyword_results[:limit]:
+    for kw_result, merged_names in merged:
         best_news = _find_best_news(
             kw_result.keyword, candidate_items, used_news_urls, all_kw_names,
             allowed_source_types=allowed_source_types,
@@ -362,6 +414,7 @@ def _build_top_keywords(
             source_tag=source_tag,
             representative_news_title=best_news.title if best_news else "",
             representative_news_url=best_news.url if best_news else "",
+            merged_keywords=merged_names,
         ))
     return results
 
