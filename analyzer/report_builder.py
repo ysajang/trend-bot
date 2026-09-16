@@ -497,13 +497,17 @@ def build_report(
 
     # 2-1. 엔터/문화/게임 TOP 5 키워드 (대표뉴스는 RSS 엔터 기사에서)
     entertainment_keywords: list[TopKeyword] = []
-    if entertainment_results:
+    ent_filtered = [
+        kw for kw in (entertainment_results or [])
+        if kw.count >= config.ENTERTAINMENT_MIN_COUNT
+    ]
+    if ent_filtered:
         ent_source_items = [
             it for it in layer1_items
             if it.category in ("게임", "문화", "연예")
         ]
         entertainment_keywords = _build_top_keywords(
-            entertainment_results, ent_source_items, tag_map, ratio_map, 5,
+            ent_filtered, ent_source_items, tag_map, ratio_map, 5,
             used_news_urls, allowed_source_types=("rss",),
         )
 

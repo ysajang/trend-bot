@@ -726,6 +726,27 @@ class TestEntertainmentSection:
         report = build_report([], [], [], [])
         assert report.entertainment_keywords == []
 
+    def test_low_count_keywords_filtered(self):
+        """ENTERTAINMENT_MIN_COUNT 미만은 섹션에서 제외"""
+        ent_results = [
+            KeywordResult(keyword="닌텐도", count=5, related_titles=[]),
+            KeywordResult(keyword="엘든링", count=3, related_titles=[]),
+            KeywordResult(keyword="태풍", count=2, related_titles=[]),
+        ]
+        report = build_report([], [], [], [], entertainment_results=ent_results)
+
+        names = [kw.keyword for kw in report.entertainment_keywords]
+        assert names == ["닌텐도", "엘든링"]
+
+    def test_all_below_min_count_hides_section(self):
+        """2026-09-16처럼 전부 2회면 엔터 섹션 자체가 비어야 한다"""
+        ent_results = [
+            KeywordResult(keyword=name, count=2, related_titles=[])
+            for name in ("콜라", "수상", "태풍", "이영한", "오수완")
+        ]
+        report = build_report([], [], [], [], entertainment_results=ent_results)
+        assert report.entertainment_keywords == []
+
 
 # ── ⭐ 행동 트리거 테스트 ──
 

@@ -203,3 +203,7 @@ ACTION_TRIGGER_SOURCE_TAGS = ("🔥 진짜트렌드", "🔍 대중관심")
 # ──────────────────────────────────────────────
 EVENT_MERGE_CONTAINMENT = 0.6
 EVENT_MERGE_MIN_SHARED = 3
+
+# 엔터/문화/게임 TOP 최소 빈도 (미만은 섹션에서 제외)
+# 빈도 2회짜리는 시그널이 아니라 노이즈 — 남는 게 없으면 섹션 자체를 생략
+ENTERTAINMENT_MIN_COUNT = 3
