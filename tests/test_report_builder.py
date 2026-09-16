@@ -140,12 +140,61 @@ class TestFindBestNews:
         assert result is not None
         assert result.url == "http://a.com"
 
-    def test_match_by_keywords_field(self):
+    def test_search_keyword_only_not_selected(self):
+        """제목에 키워드가 없으면 search_keyword가 일치해도 대표 뉴스가 아니다"""
         items = [
             _make_l2_item("반도체 투자", summary="상세설명", search_keyword="삼성전자"),
         ]
-        result = _find_best_news("삼성전자", items)
+        assert _find_best_news("삼성전자", items) is None
+
+    def test_summary_only_not_selected(self):
+        """summary에만 있는 기사도 대표 뉴스가 아니다"""
+        items = [
+            _make_l2_item("반도체 투자", summary="삼성전자 관련 상세설명"),
+        ]
+        assert _find_best_news("삼성전자", items) is None
+
+    def test_title_match_wins_over_cooccurrence_bonus(self):
+        """
+        2026-09-16 [회견] 오매칭 재현
+
+        제목에 키워드가 없어도 search_keyword 일치 + 다른 TOP 키워드 동시출현으로
+        점수가 더 높아지던 구조(실측 41.2 vs 39.5)를 재현하고,
+        제목에 키워드가 있는 기사를 고르는지 확인한다.
+        """
+        off_topic = _make_l2_item(
+            '美 법무장관 "AI 종말론, 중간선거에 영향 주려는 것"',
+            summary="법무장관은 기자회견에서 트럼프 행정부의 인공지능 규제 방향을 설명했다. " * 8,
+            url="http://off.com",
+            search_keyword="회견",
+        )
+        on_topic = _make_l2_item(
+            "여야 대치 속 대통령이 취임 100일을 맞아 기자회견을 열고 국정 운영 방향을 설명했다",
+            summary="대통령실은 별도 브리핑을 예고했다",
+            url="http://on.com",
+            search_keyword="회견",
+        )
+        top_kws = ["AI", "트럼프", "청문회", "회견"]
+
+        # 점수만 보면 off_topic이 이긴다 (회귀 방지용 전제 확인)
+        assert _compute_relevance_score("회견", off_topic, top_kws) > \
+            _compute_relevance_score("회견", on_topic, top_kws)
+
+        result = _find_best_news("회견", [off_topic, on_topic], all_top_keywords=top_kws)
         assert result is not None
+        assert result.url == "http://on.com"
+
+    def test_no_title_match_returns_none(self):
+        """제목 일치 후보가 하나도 없으면 None (대표 뉴스 없음)"""
+        off_topic = _make_l2_item(
+            '美 법무장관 "AI 종말론, 중간선거에 영향 주려는 것"',
+            summary="법무장관은 기자회견에서 입장을 밝혔다",
+            url="http://off.com",
+            search_keyword="회견",
+        )
+        assert _find_best_news(
+            "회견", [off_topic], all_top_keywords=["AI", "트럼프", "회견"],
+        ) is None
 
     def test_prefers_longer_summary(self):
         items = [
@@ -573,7 +622,7 @@ class TestNewsDeduplification:
     def test_fallback_when_all_news_used(self):
         """모든 뉴스가 사용된 경우 빈 값으로 처리"""
         l2 = [
-            _make_l2_item("유일한 뉴스", summary="하나뿐", url="http://only.com", search_keyword="A"),
+            _make_l2_item("A 유일한 뉴스", summary="하나뿐", url="http://only.com", search_keyword="A"),
         ]
         keywords = [
             _make_keyword_result("A", 10),

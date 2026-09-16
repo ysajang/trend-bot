@@ -232,6 +232,9 @@ def _find_best_news(
     """
     키워드에 매칭되는 뉴스 중 대표 1건 선정
 
+    후보 조건: 제목에 키워드가 들어 있는 기사만
+      (summary/search_keyword만 일치한 기사는 동시 출현 보너스로 점수가 뒤집혀
+       엉뚱한 기사가 대표로 뽑히므로 제외 — 2026-09-16 [회견] 오매칭 사례)
     선정 기준: relevance score (맥락 일치도) 최고점
     동점 시: published_at 최신순
 
@@ -242,12 +245,15 @@ def _find_best_news(
             (종합=naver_news / 엔터=rss)
     """
     exclude = used_urls or set()
+    kw_lower = keyword.lower()
     scored: list[tuple[float, TrendItem]] = []
 
     for item in candidate_items:
         if item.source_type not in allowed_source_types:
             continue
         if item.url in exclude:
+            continue
+        if kw_lower not in item.title.lower():
             continue
 
         rel_score = _compute_relevance_score(keyword, item, all_top_keywords)
